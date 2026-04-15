@@ -119,8 +119,6 @@ def build_and_save():
                 "category": row["category"] or "",
                 "sentiment": row["sentiment"] or "",
                 "sentiment_score": row["sentiment_score"] or 0.0,
-                "relevance_score": row["relevance_score"] or 0.0,
-                "relation_type": row["relation_type"] or "",
                 "source": row["source_name"] or "",
                 "url": row["url"] or "",
                 "published_at": str(row["published_at"]) if row["published_at"] else "",

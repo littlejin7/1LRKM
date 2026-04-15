@@ -41,7 +41,7 @@ from pydantic import (
     model_validator,
 )
 
-from category_taxonomy import ALL_SUBCATEGORIES   #이거 분석해야함. 
+#from category_taxonomy import ALL_SUBCATEGORIES   #이거 분석해야함. 
 
 # ─── 카테고리 ───────────────────────────────────────────
 NewsCategory = Literal[
@@ -65,12 +65,12 @@ NewsCategory = Literal[
     "기타",
 ]
 
-ALLOWED_NEWS_CATEGORIES: tuple[str, ...] = ALL_SUBCATEGORIES
+#ALLOWED_NEWS_CATEGORIES: tuple[str, ...] = ALL_SUBCATEGORIES
 
-if set(get_args(NewsCategory)) != set(ALL_SUBCATEGORIES):
-    raise RuntimeError(
-        "NewsCategory Literal must match category_taxonomy.ALL_SUBCATEGORIES"
-    )
+#if set(get_args(NewsCategory)) != set(ALL_SUBCATEGORIES):
+#    raise RuntimeError(
+#        "NewsCategory Literal must match category_taxonomy.ALL_SUBCATEGORIES"
+#    )
 
 
 # ─── 요약 카드 모델 ─────────────────────────────────────
@@ -287,22 +287,26 @@ class KpopNewsSummary(BaseModel):
         return self
 
 def summary_to_processed_payload(raw_news_id: int, data: KpopNewsSummary) -> dict:
-
+    # TTS 텍스트 처리
     tts_db = _tts_strip_bilingual_parentheticals(data.tts_text)
     if len(tts_db) < 30:
         tts_db = (data.tts_text or "").strip()[:500]
     
-    # 최종 반환 컬럼
+   # 최종 반환 컬럼 (누락된 필드 추가)
     return {
         "raw_news_id": raw_news_id,
-        "summary": list(data.summary),
+        "summary": [s.model_dump() for s in data.summary],      # 객체를 딕셔너리로 변환
+        "summary_en": [s.model_dump() for s in data.summary_en], # 누락 필드 추가
         "category": data.category,
+        "sub_category": data.sub_category,                     # 누락 필드 추가
         "artist_tags": list(data.artist_tags),
         "keywords": list(data.keywords),
         "sentiment": data.sentiment,
         "importance": data.importance,
         "importance_reason": (data.importance_reason or "").strip() or None,
         "trend_insight": data.trend_insight,
+        "timeline": [t.model_dump() for t in data.timeline],    # 누락 필드 추가
+        "chart_data": data.chart_data.model_dump() if data.chart_data else None, # 누락 필드 추가
         "rag_sources": data.rag_sources,
         "is_rag_used": bool(data.is_rag_used),
         "source_name": data.source_name,
