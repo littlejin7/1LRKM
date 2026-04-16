@@ -50,7 +50,8 @@ class RawNews(Base):
     published_at = Column(DateTime, nullable=True)
     crawled_at = Column(DateTime, default=datetime.now)
     is_processed = Column(Boolean, default=False)
-    category = Column(String(50), nullable=True)
+    category = Column(String(50), nullable=True)  # 대분류  (ex: 컨텐츠&작품)
+    sub_category = Column(String(100), nullable=True)  # 중분류 (ex:음악.차트)
 
     processed = relationship("ProcessedNews", back_populates="raw", uselist=False)
 
@@ -66,32 +67,30 @@ class ProcessedNews(Base):
     raw_news_id = Column(Integer, ForeignKey("raw_news.id"), nullable=False)
 
     # ── 분류 (스키마: category, sub_category) ──
-    category = Column(String(40), nullable=True)          # 중분류
-    category_major = Column(String(40), nullable=True)    # 대분류
-    category_sub = Column(String(40), nullable=True)      # 소분류
-    sub_category = Column(String(100), nullable=True)     # 세분화 카테고리
+    category = Column(String(40), nullable=True)  # 중분류
+    sub_category = Column(String(100), nullable=True)  # 세분화 카테고리
 
     # ── 요약 (스키마: summary, summary_en) ──
-    summary = Column(JSON, nullable=True)                 # List[str] 5~7문장 한국어
-    summary_en = Column(JSON, nullable=True)              # List[str] 5~7문장 영어
+    summary = Column(JSON, nullable=True)  # List[str] 5~7문장 한국어
+    summary_en = Column(JSON, nullable=True)  # List[str] 5~7문장 영어
 
     # ── 브리핑 (스키마: briefing) ──
-    briefing = Column(JSON, nullable=True)                # [{"label": str, "content": str}, ...]
+    briefing = Column(JSON, nullable=True)  # [{"label": str, "content": str}, ...]
 
     # ── 태그 (스키마: keywords, artist) ──
-    keywords = Column(JSON, nullable=True)                # List[str] 정확히 5개
-    artist_tags = Column(JSON, nullable=True)             # List[str] 인물/그룹명
+    keywords = Column(JSON, nullable=True)  # List[str] 정확히 5개
+    artist_tags = Column(JSON, nullable=True)  # List[str] 인물/그룹명
 
     # ── 감성 (스키마: sentiment) ──
-    sentiment = Column(String(10), nullable=True)         # 긍정 | 부정 | 중립
+    sentiment = Column(String(10), nullable=True)  # 긍정 | 부정 | 중립
 
     # ── 중요도 (스키마: importance, importance_reason) ──
-    importance = Column(Integer, nullable=True)           # 1~10
-    importance_reason = Column(Text, nullable=True)       # [IPa+사건b+파급c+기본1=총점]
+    importance = Column(Integer, nullable=True)  # 1~10
+    importance_reason = Column(Text, nullable=True)  # [IPa+사건b+파급c+기본1=총점]
 
     # ── 인사이트 (스키마: trend_insight, timeline) ──
-    trend_insight = Column(Text, nullable=True)           # 한 줄 트렌드 인사이트
-    timeline = Column(JSON, nullable=True)                # [{"date": "YYYY-MM", "event": str}, ...]
+    trend_insight = Column(Text, nullable=True)  # 한 줄 트렌드 인사이트
+    timeline = Column(JSON, nullable=True)  # [{"date": "YYYY-MM", "event": str}, ...]
 
     # ── RAG (스키마: rag_sources, is_rag_used) ──
     rag_sources = Column(JSON, nullable=True)
@@ -99,15 +98,19 @@ class ProcessedNews(Base):
 
     # ── TTS (스키마: tts_text) ──
     tts_text = Column(Text, nullable=True)
+    ko_title = Column(Text, nullable=True)  # 한국어 제목
 
     # ── 메타 (스키마: source_name, language) ──
     source_name = Column(String(100), nullable=True)
-    language = Column(String(5), nullable=True)           # ko | en
+    language = Column(String(5), nullable=True)  # ko | en
 
     # ── 기타 ──
     url = Column(String(1000), nullable=True)
     thumbnail_url = Column(String(1000), nullable=True)
     processed_at = Column(DateTime, default=datetime.now)
+    published_at = Column(DateTime, nullable=True)
+    crawled_at = Column(DateTime, nullable=True)
+    is_k_ent = Column(Boolean, default=True)  # 한국 연예계 뉴스인지
 
     raw = relationship("RawNews", back_populates="processed")
 
@@ -120,26 +123,37 @@ class PastNews(Base):
     __tablename__ = "past_news"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    processed_news_id = Column(Integer, ForeignKey("processed_news.id"), nullable=False)
-    artist_name = Column(String(200), nullable=False)
-    artist_type = Column(String(20), nullable=True)
-    artist_agency = Column(String(100), nullable=True)
-    title = Column(String(500), nullable=False)
-    content = Column(Text, nullable=True)
-    url = Column(String(1000), nullable=False)
-    published_at = Column(DateTime, nullable=True)
-    summary = Column(Text, nullable=True)
-    category = Column(String(30), nullable=True)
+    
+    # [핵심 수정] processed_news 테이블과 연결되는 외래 키 설정을 명시해야 합니다.
+    processed_news_id = Column(Integer, ForeignKey("processed_news.id"), nullable=True)
+    artist_name = Column(String(100), nullable=True)
+    category = Column(String(40), nullable=True)  # 대분류
+    sub_category = Column(String(100), nullable=True)  # 중분류
+    ko_title = Column(Text, nullable=True)  # 추가
+    is_k_ent = Column(Boolean, default=True)  # 추가
+    summary = Column(JSON, nullable=True)
+    summary_en = Column(JSON, nullable=True)
+    briefing = Column(JSON, nullable=True)
     keywords = Column(JSON, nullable=True)
+    artist_tags = Column(JSON, nullable=True)
     sentiment = Column(String(10), nullable=True)
-    sentiment_score = Column(Float, nullable=True)
-    relevance_score = Column(Float, nullable=True)
-    relation_type = Column(String(50), nullable=True)
-    crawled_at = Column(DateTime, default=datetime.now)
+    importance = Column(Integer, nullable=True)
+    importance_reason = Column(Text, nullable=True)
+    trend_insight = Column(Text, nullable=True)
+    timeline = Column(JSON, nullable=True)
+    rag_sources = Column(JSON, nullable=True)
+    is_rag_used = Column(Boolean, default=False)
+    tts_text = Column(Text, nullable=True)
     source_name = Column(String(100), nullable=True)
+    language = Column(String(5), nullable=True)
+    url = Column(String(1000), nullable=True)
     thumbnail_url = Column(String(1000), nullable=True)
+    processed_at = Column(DateTime, default=datetime.now)
+    published_at = Column(DateTime, nullable=True)
+    crawled_at = Column(DateTime, nullable=True)
 
     __table_args__ = (
+        # 여기서 'artist_name'을 사용하고 있기 때문에 위에서 정의가 되어야 합니다.
         UniqueConstraint("url", "artist_name", name="uq_past_url_artist"),
     )
 
@@ -164,25 +178,28 @@ def _sqlite_add_missing_columns() -> None:
         existing = {r[1] for r in rows}
 
         new_columns: list[tuple[str, str]] = [
-            ("category_major",    "VARCHAR(40)"),
-            ("category_sub",      "VARCHAR(40)"),
-            ("sub_category",      "VARCHAR(100)"),
-            ("summary_en",        "TEXT"),
-            ("briefing",          "TEXT"),
-            ("importance",        "INTEGER"),
+            ("category", "VARCHAR(40)"), #대분류
+            ("sub_category", "VARCHAR(40)"), #중분류
+            ("summary_en", "TEXT"),
+            ("briefing", "TEXT"),
+            ("importance", "INTEGER"),
             ("importance_reason", "TEXT"),
-            ("trend_insight",     "TEXT"),
-            ("timeline",          "TEXT"),
-            ("rag_sources",       "TEXT"),
-            ("is_rag_used",       "INTEGER"),
-            ("language",          "VARCHAR(5)"),
+            ("trend_insight", "TEXT"),
+            ("timeline", "TEXT"),
+            ("rag_sources", "TEXT"),
+            ("is_rag_used", "INTEGER"),
+            ("language", "VARCHAR(5)"),
+            ("published_at", "DATETIME"),
+            ("crawled_at", "DATETIME"),
         ]
 
         for col, sqltype in new_columns:
             if col in existing:
                 continue
             try:
-                conn.execute(text(f"ALTER TABLE processed_news ADD COLUMN {col} {sqltype}"))
+                conn.execute(
+                    text(f"ALTER TABLE processed_news ADD COLUMN {col} {sqltype}")
+                )
                 conn.commit()
                 print(f"[database] 컬럼 추가됨: {col} ({sqltype})")
             except Exception as e:

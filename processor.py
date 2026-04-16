@@ -1,12 +1,10 @@
 """
-03.processor.py — LLM 가공 + 최신 뉴스 이미지 수집
+03.processor.py — LLM 가공 + 최신 뉴스 이미지 수집 (3일 기준 분기 처리 버전)
 
-역할:
-  process_and_save()              : raw_news → LLM 가공 → processed_news 저장
-  fetch_processed_images_only()   : processed_news 썸네일만 수집
-
-주의:
-  - past_news에는 이미지를 저장하지 않음
+수정 사항:
+  1. process_and_save() 내에 3일 기준 날짜 분기 로직 추가
+  2. 과거 뉴스는 PastNews 테이블로, 최신 뉴스는 ProcessedNews 테이블로 저장
+  3. 마이그레이션 함수(migrate_old_processed_news) 예시 추가
 """
 
 import os
@@ -14,14 +12,19 @@ import json
 import time
 from datetime import datetime
 from urllib.parse import quote
-
+from categories import llm_prompt_category_block
 from playwright.sync_api import sync_playwright
 from sqlalchemy import or_
 from sqlalchemy.exc import SQLAlchemyError
 from openai import OpenAI
 from pydantic import ValidationError
-from schemas import KpopNewsSummary, summary_to_processed_payload, EnglishSummaryCard, KoreanSummaryCard
-from database import RawNews, ProcessedNews, get_session
+from database import RawNews, ProcessedNews, PastNews, get_session
+from schemas import KpopNewsSummary, summary_to_processed_payload
+
+from prompts.summary import get_summary_prompts
+
+# 파일 로딩 시점에 시스템 프롬프트와 유저 템플릿을 한 번만 불러옵니다.
+SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_PROMPT_TEMPLATE = get_summary_prompts()
 
 
 # ═══════════════════════════════════════════════════
@@ -29,117 +32,88 @@ from database import RawNews, ProcessedNews, get_session
 # ═══════════════════════════════════════════════════
 
 
-#26.4.15 기준 주석처리 (용남님쓰던거)
+# 26.4.15 기준 주석처리 (용남님쓰던거)
 # client = OpenAI(
 #     api_key=os.getenv("OPENROUTER_API_KEY"),
 #     base_url="https://openrouter.ai/api/v1",
-#)
+# )
 
 client = OpenAI(
-    api_key="ollama",           # Ollama는 키 불필요
+    api_key="ollama",  # Ollama는 키 불필요
     base_url="http://localhost:11434/v1",
 )
-LLM_MODEL = "gemma4:latest"       # 또는 "gemma4"
-LLM_DELAY = 2
+LLM_MODEL = "gemma3:latest"  # 또는
+LLM_DELAY = 0.5
 
 
-#채은님이 시스템프롬프트 줄예정
-
-SYSTEM_PROMPT = """너는 K-엔터테인먼트 뉴스 분석 전문가야.
-주어진 뉴스 기사만 근거로, 아래 JSON 객체 하나만 출력한다. JSON 바깥 텍스트/설명/마크다운/코드펜스 금지.
-
-{
-  "summary": [
-    {"label": "핵심사실", "content": "본문 근거 한 줄 존댓말"},
-    {"label": "맥락배경", "content": "..."},
-    {"label": "영향범위", "content": "..."},
-    {"label": "추가쟁점", "content": "..."}
-  ],
-  "summary_en": [
-    {"label": "Key fact", "content": "One complete English sentence."},
-    {"label": "Context", "content": "..."},
-    {"label": "Impact", "content": "..."},
-    {"label": "Extra angle", "content": "..."}
-  ],
-  "artist_tags": ["본문에 실제 등장한 인물·그룹명, 없으면 []"],
-  "keywords": ["비인명 키워드만 정확히 5개"],
-  "sub_category": "아래 허용 목록 중 정확히 1개",
-  "category": "sub_category 와 동일한 문자열(레거시 호환)",
-  "sentiment": "긍정|부정|중립 중 하나(한글)",
-  "sentiment_score": null,
-  "importance": 1,
-  "importance_reason": "[IP0+사건0+파급0+기본1=1] 근거 한 문장",
-  "trend_insight": "유진님이 만들꺼야",
-  "source_name": "출처 사이트명(예: 빌보드, 위버스)",
-  "tts_text": "한국어 구어체 라디오 브리핑 150~220자 권장. URL/해시태그/이모지/마크다운 금지."
-}
-
-[필드 규칙]
-- summary / summary_en: 각각 '요약 카드' 배열. 정확히 4~6개(동일 개수). 순서 1:1 대응. (위 JSON 예시는 최소 4개; 기사에 맞으면 5~6개까지.)
-  - summary: label 2~10자 한글 명사구, content 본문 근거 한 줄(존댓말). 카드끼리 중복·복붙 금지.
-  - summary_en: label 2~30자 영어, content 영어 한 문장. i번째 카드는 i번째 한국어 카드와 같은 초점.
-- artist_tags: 제목/본문에 실제로 나온 이름만. 없으면 [].
-- keywords: 정확히 5개. artist_tags 인명/그룹명은 넣지 말고 테마·형식·행사·차트 등 비인명만.
-- sub_category: 아래 중 정확히 하나만(오타·영문 라벨 금지).
-  음악/차트, 앨범/신곡, 콘서트/투어, 드라마/방송, 예능/방송, 공연/전시, 영화/OTT,
-  팬덤/SNS, 스캔들/논란, 인사/동정, 미담/기부, 연애/결혼, 입대/군복무,
-  산업/기획사, 해외반응, 마케팅/브랜드, 행사/이벤트, 기타
-- category: 반드시 sub_category 와 같은 문자열.
-- sentiment: 반드시 한글 "긍정" 또는 "부정" 또는 "중립".
-- sentiment_score: 항상 null.
-- importance: 1~10 정수.
-- importance_reason: `[IPa+사건b+파급c+기본1=총점]` 형식. a,b,c는 0~3 정수, 총점=a+b+c+1 이고 importance 와 일치.
-- trend_insight: 유진님이만들꺼야
-- tts_text: 한국어 라디오 앵커 톤. 숫자는 읽기 좋게 한글 혼합 표기 가능.
-- briefing 필드는 출력하지 않는다."""
-
-
-
-# 스키마 컬럼은 schemas의 summary_to_processed_payload로 옮겼습니다.
 def process_single(raw: RawNews) -> dict:
+    """기존과 동일: LLM을 호출하여 가공된 데이터를 반환"""
     content = (raw.content or "")[:3000]
 
-    user_message = f"""아래 뉴스를 분석해줘.
-
-제목: {raw.title or ""}
-URL: {raw.url or ""}
-발행일: {raw.published_at or ""}
-본문:
-{content}"""
+    user_message = SUMMARY_USER_PROMPT_TEMPLATE.format(
+        title=raw.title or "",
+        content=content,
+        raw_category_hint=f"{raw.category} / {raw.sub_category}",
+    )
 
     response = client.chat.completions.create(
         model=LLM_MODEL,
         temperature=0.3,
-        timeout=60,
+        timeout=120,
         response_format={"type": "json_object"},
-        extra_body={"keep_alive":0},   #멘토님 추천옵션
+        extra_body={"keep_alive": 0},
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            # [수정] 모듈에서 가져온 SUMMARY_SYSTEM_PROMPT 적용
+            {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ],
     )
 
     raw_text = response.choices[0].message.content or ""
+    result = json.loads(raw_text)
+    validated = KpopNewsSummary(**result)
 
-    try:
-        result = json.loads(raw_text)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"LLM JSON 파싱 실패 (raw_news_id={raw.id})") from e
-
-    try:
-        validated = KpopNewsSummary(**result)
-    except ValidationError as e:
-        raise ValueError(
-            f"LLM 스키마 검증 실패 (raw_news_id={raw.id}): {e.errors()} | raw_text={raw_text[:500]}"
-        ) from e
-    
+    # AI가 만든 요약 결과를 DB 페이로드로 변환할 때
     payload = summary_to_processed_payload(raw.id, validated)
-    payload["url"] = raw.url or ""
-    payload["processed_at"] = datetime.now()
+
+    # 원래 trend_insight에 들어있던 1줄 요약(AI의 첫 분석)을 briefing으로 옮깁니다.
+    # 기존 briefing이 리스트 형태라면 그 앞에 추가하거나 교체합니다.
+
+    if payload.get("trend_insight"):
+        # 새로운 브리핑 아이템 생성
+        new_briefing_item = {"label": "핵심요약", "content": payload["trend_insight"]}
+
+        # 기존 briefing 리스트에 추가 (null인 경우 방지)
+        if not payload.get("briefing"):
+            payload["briefing"] = []
+        payload["briefing"].insert(0, new_briefing_item)
+
+        # [중요] 원래 trend_insight 자리는 일단 비워둡니다 (나중에 랑그래프가 채움)
+        payload["trend_insight"] = ""
+
+    # [수정] RawNews의 원본 정보(URL, 발행일 등)를 페이로드에 합쳐줍니다.
+    payload["url"] = raw.url
+    payload["published_at"] = raw.published_at
+    payload["crawled_at"] = raw.crawled_at
+    
+    # AI가 ko_title을 백지로 냈거나 빼먹은 경우, 원본 기사의 영어/기존 제목으로 채워넣기
+    if not payload.get("ko_title") or not str(payload["ko_title"]).strip():
+        payload["ko_title"] = raw.title
+
+    # AI가 source_name을 빼먹은 경우 URL에서 파싱하여 채움
+    if not payload.get("source_name") or not str(payload["source_name"]).strip():
+        if raw.url:
+            from urllib.parse import urlparse
+            netloc = urlparse(raw.url).netloc.replace("www.", "")
+            payload["source_name"] = netloc.split(".")[0].capitalize()
+        else:
+            payload["source_name"] = "Unknown"
+
     return payload
 
+
 def process_and_save(session, batch_size: int = 50) -> int:
-    """미처리된 raw_news를 LLM으로 가공 → processed_news에 저장"""
+    """미처리된 raw_news를 가공하여 저장"""
     unprocessed = (
         session.query(RawNews)
         .filter(RawNews.is_processed == False)
@@ -151,32 +125,116 @@ def process_and_save(session, batch_size: int = 50) -> int:
         print("[가공] 처리할 뉴스가 없습니다.")
         return 0
 
+    # --- 실행 영역 시작 ---
     print(f"[가공] {len(unprocessed)}건 처리 시작...")
-    processed_count = 0
+    processed_count = 0  # 이 변수가 주석 밖에 있어야 숫자를 셉니다!
+
+    # 1. 날짜 기준선 로직 적용
+    from datetime import timedelta
+
+    now = datetime.now()
+    threshold_date = (now - timedelta(days=2)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
 
     for raw in unprocessed:
         try:
             print(f"  → 가공 중: {raw.title[:40]}...")
-
-            result = process_single(raw)
+            result_payload = process_single(raw)
             time.sleep(LLM_DELAY)
 
-            session.add(ProcessedNews(**result))
+            if not result_payload.get("is_k_ent", True):
+                print(f"    [스킵] K-엔터 등재 조건 미달 (해외 배우/팝 뉴스 필터링)")
+                # 해당 원본 기사는 가공 완료(스킵) 처리
+                raw.is_processed = True
+                session.commit()
+                continue
+
+            # 2. 날짜에 따른 분기 저장
+            pub_at = raw.published_at
+            if pub_at and pub_at >= threshold_date:
+                session.add(ProcessedNews(**result_payload))
+                print(f"    [결과] ProcessedNews 테이블로 저장됨")
+            else:
+                result_payload.pop("raw_news_id", None)
+                session.add(PastNews(**result_payload))
+                print(f"    [결과] PastNews 테이블로 저장됨 (과거 기사)")
+
             raw.is_processed = True
             session.commit()
             processed_count += 1
 
-        except Exception as e:
-            print(f"  [오류] '{raw.title[:30]}...': {e}")
+        except ValidationError as e:
+            print(f"    [스킵] AI 스키마 파괴 (총 {len(e.errors())}개 분류 탈락)")
+            for err in e.errors()[:3]:  # 최대 3개까지만 출력
+                loc = ".".join(str(x) for x in err["loc"])
+                msg = err["msg"]
+                print(f"      - 필드 [{loc}]: {msg}")
+            if len(e.errors()) > 3:
+                print(f"      - ... 외 {len(e.errors()) - 3}개 오류")
+            
             session.rollback()
+            raw.is_processed = True
+            session.commit()
+            
+        except json.JSONDecodeError as e:
+            print(f"    [스킵] 완벽한 JSON 파괴 (괄호 누락 등): {e}")
+            session.rollback()
+            raw.is_processed = True
+            session.commit()
+            
+        except Exception as e:
+            error_msg = str(e).split('\n')[0]
+            print(f"    [스킵] 기타 시스템 오류: {error_msg}")
+            session.rollback()
+            raw.is_processed = True
+            session.commit()
 
     print(f"[가공 완료] {processed_count}/{len(unprocessed)}건 처리됨")
     return processed_count
 
 
+def migrate_old_processed_news(session):
+    """(추가) 하루가 지나 유통기한(3일)이 지난 ProcessedNews를 PastNews로 이동"""
+    now = datetime.now()
+    threshold_date = (now - timedelta(days=2)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+    # 기준일보다 오래된 뉴스 찾기
+    old_news_list = (
+        session.query(ProcessedNews)
+        .filter(ProcessedNews.published_at < threshold_date)
+        .all()
+    )
+
+    if not old_news_list:
+        print("[이동] 이동할 오래된 뉴스가 없습니다.")
+        return
+
+    print(f"[이동] {len(old_news_list)}건의 뉴스를 PastNews로 마이그레이션 중...")
+
+    for news in old_news_list:
+        # 1. PastNews로 복사 (ID 제외하고 모든 속성 복사)
+        # SQLAlchemy 모델 객체의 __dict__를 이용하거나 필요한 컬럼을 매핑합니다.
+        news_data = {
+            c.name: getattr(news, c.name)
+            for c in news.__table__.columns
+            if c.name != "id"
+        }
+        session.add(PastNews(**news_data))
+
+        # 2. ProcessedNews에서 삭제
+        session.delete(news)
+
+    session.commit()
+    print("[이동] 마이그레이션 완료.")
+
+
 # ═══════════════════════════════════════════════════
 # Part 2: 이미지 수집 (Bing 이미지 검색 → thumbnail_url 저장)
 # ═══════════════════════════════════════════════════
+
 
 def _loads_maybe(v):
     if v is None:
@@ -212,8 +270,16 @@ def _is_good_image_url(url: str) -> bool:
         return False
 
     bad_keywords = [
-        "logo", "sprite", "icon", "tracker", "spacer", "blank",
-        ".svg", "r.bing.com", "bing.com/rp/", "th.bing.com/th?id=ovp",
+        "logo",
+        "sprite",
+        "icon",
+        "tracker",
+        "spacer",
+        "blank",
+        ".svg",
+        "r.bing.com",
+        "bing.com/rp/",
+        "th.bing.com/th?id=ovp",
     ]
     if any(k in low for k in bad_keywords):
         return False
@@ -265,7 +331,9 @@ def get_used_urls_for_artist(session, artist_name: str) -> set[str]:
     return used
 
 
-def extract_bing_image_candidates(query: str, headless: bool = True, max_candidates: int = 20) -> list[str]:
+def extract_bing_image_candidates(
+    query: str, headless: bool = True, max_candidates: int = 20
+) -> list[str]:
     query = _clean_query(query)
     if not query:
         return []
@@ -297,11 +365,13 @@ def extract_bing_image_candidates(query: str, headless: bool = True, max_candida
             )
 
             page = context.new_page()
-            page.add_init_script("""
+            page.add_init_script(
+                """
                 Object.defineProperty(navigator, 'webdriver', {
                     get: () => undefined
                 });
-            """)
+            """
+            )
 
             page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
             page.wait_for_timeout(3000)
@@ -365,9 +435,13 @@ def pick_non_duplicate_bing_image(
     headless: bool = True,
 ) -> str | None:
     all_used = get_all_used_thumbnail_urls(session)
-    artist_used = get_used_urls_for_artist(session, artist_name or "") if artist_name else set()
+    artist_used = (
+        get_used_urls_for_artist(session, artist_name or "") if artist_name else set()
+    )
 
-    candidates = extract_bing_image_candidates(query, headless=headless, max_candidates=20)
+    candidates = extract_bing_image_candidates(
+        query, headless=headless, max_candidates=20
+    )
     if not candidates:
         return None
 
@@ -384,31 +458,52 @@ def pick_non_duplicate_bing_image(
 
 def build_query_for_processed(article) -> tuple[str, str]:
     artists = _loads_maybe(getattr(article, "artist_tags", None))
+    cat = getattr(article, "sub_category", "") or ""
+
     if artists:
         artist = str(artists[0]).strip()
-        return f"{artist} official photo", artist
+        # 드라마/영화/배우/OTT 관련 뉴스라면 화보나 시상식 사진 위주로
+        if any(kw in cat for kw in ["드라마", "영화", "OTT", "배우"]):
+            return f"{artist} actor photoshoot HQ", artist
+        # K-pop 및 그 외 카테고리는 고해상도 잡지 화보나 컨셉 포토
+        else:
+            return f"{artist} Kpop magazine photoshoot HQ", artist
 
     keywords = _loads_maybe(getattr(article, "keywords", None))
     if keywords:
-        return f"{keywords[0]} kpop official photo", ""
+        return f"{keywords[0]} K-entertainment high resolution", ""
 
     source_name = getattr(article, "source_name", None) or ""
     if source_name.strip():
-        return f"{source_name} k-entertainment", ""
+        return f"{source_name} Kpop high quality press", ""
 
-    return "kpop idol official photo", ""
+    return "Kpop idol photoshoot HQ", ""
 
 
 def fetch_images_for_processed(session, sleep_sec: float = 1.5, headless: bool = True):
-    articles = (
+    # ProcessedNews 이미지 누락본 수집
+    recent_articles = (
         session.query(ProcessedNews)
         .filter(
-            or_(ProcessedNews.thumbnail_url.is_(None), ProcessedNews.thumbnail_url == "")
+            or_(
+                ProcessedNews.thumbnail_url.is_(None), ProcessedNews.thumbnail_url == ""
+            )
         )
         .all()
     )
 
-    print(f"\n[processed_news] 총 {len(articles)}건 이미지 처리 시작")
+    # PastNews 이미지 누락본 수집
+    past_articles = (
+        session.query(PastNews)
+        .filter(or_(PastNews.thumbnail_url.is_(None), PastNews.thumbnail_url == ""))
+        .all()
+    )
+
+    articles = recent_articles + past_articles
+
+    print(
+        f"\n[이미지 처리] 총 {len(articles)}건 수집 시작 (최신: {len(recent_articles)}, 과거: {len(past_articles)})"
+    )
 
     success = 0
     failed = 0
@@ -452,4 +547,30 @@ def fetch_processed_images_only(headless: bool = True):
 
 
 if __name__ == "__main__":
-    fetch_processed_images_only(headless=True)
+    with get_session() as session:
+        print("\n🚀 [뉴스 가공 파이프라인 시작]")
+
+        total_processed = 0
+        batch_count = 1
+
+        while True:
+            print(f"\n--- [{batch_count}회차 세트] 5개 가공 시작 ---")
+
+            # [핵심] batch_size를 5로 설정합니다.
+            count = process_and_save(session, batch_size=5)
+
+            # 더 이상 가공할 뉴스가 없으면 루프 종료
+            if count == 0:
+                print("\n✅ 모든 미처리 뉴스의 가공이 완료되었습니다.")
+                break
+
+            total_processed += count
+            print(f"✔️ {batch_count}회차 완료! (현재까지 누적 {total_processed}건)")
+
+            # [수정] 5개 가공이 끝날 때마다 이미지를 수집하도록 주석 해제함
+            print("📸 현재 세트 이미지 수집 중...")
+            fetch_images_for_processed(session, headless=True)
+
+            batch_count += 1
+
+        print(f"\n🏁 최종 완료! 총 {total_processed}건의 데이터가 처리되었습니다.")

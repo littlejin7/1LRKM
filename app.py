@@ -31,6 +31,7 @@ apply_styles()
 
 # ── DB 유틸 ───────────────────────────────────────────────────────────────────
 
+
 def _open():
     con = sqlite3.connect(str(DB_PATH))
     con.row_factory = sqlite3.Row
@@ -52,15 +53,17 @@ def _j(v):
 def load_processed():
     con = _open()
     cur = con.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         SELECT
             p.id, r.title, p.url, p.category, p.summary,
-            p.keywords, p.artist_tags, p.sentiment, p.sentiment_score,
+            p.keywords, p.artist_tags, p.sentiment, p.importance,
             p.source_name, p.tts_text, p.processed_at, p.thumbnail_url
         FROM processed_news p
         JOIN raw_news r ON r.id = p.raw_news_id
         ORDER BY p.id DESC
-    """)
+    """
+    )
     rows = cur.fetchall()
     con.close()
     return [
@@ -69,11 +72,12 @@ def load_processed():
             "title": r["title"] or "",
             "url": r["url"] or "",
             "category": r["category"] or "기타",
+            "sub_category": "",
             "summary": _j(r["summary"]),
             "keywords": _j(r["keywords"]),
             "artist_tags": _j(r["artist_tags"]),
             "sentiment": r["sentiment"] or "neutral",
-            "sentiment_score": r["sentiment_score"] if r["sentiment_score"] is not None else 0.0,
+            "importance": r["importance"] or 0,
             "source_name": r["source_name"] or "",
             "tts_text": r["tts_text"] or "",
             "processed_at": r["processed_at"] or "",
@@ -88,14 +92,16 @@ def load_past():
     con = _open()
     cur = con.cursor()
     # 1. 쿼리에서는 thumbnail_url을 뺐습니다.
-    cur.execute("""
+    cur.execute(
+        """
         SELECT
             id, processed_news_id, artist_name, title, url, summary,
             relation_type, relevance_score, sentiment, category,
             source_name, published_at
         FROM past_news
         ORDER BY id DESC
-    """)
+    """
+    )
     rows = cur.fetchall()
     con.close()
     return [
@@ -107,7 +113,9 @@ def load_past():
             "url": r["url"] or "",
             "summary": r["summary"] or "",
             "relation_type": r["relation_type"] or "",
-            "relevance_score": r["relevance_score"] if r["relevance_score"] is not None else 0.0,
+            "relevance_score": (
+                r["relevance_score"] if r["relevance_score"] is not None else 0.0
+            ),
             "sentiment": r["sentiment"] or "neutral",
             "category": r["category"] or "기타",
             "source_name": r["source_name"] or "",
@@ -116,7 +124,9 @@ def load_past():
         for r in rows
     ]
 
+
 # ── 메인 ─────────────────────────────────────────────────────────────────────
+
 
 def main():
     if not DB_PATH.exists():
@@ -127,10 +137,10 @@ def main():
     past = load_past()
 
     # 사이드바 → keyword, 대분류, 중분류, 감성필터, 자동새로고침
-    keyword, major, sub, sentiments, auto_refresh = render_sidebar()
+    keyword, category, sub_category, sentiments, auto_refresh = render_sidebar()
 
     # 대시보드 렌더링
-    render_dashboard(processed, past, keyword, major, sub, sentiments)
+    render_dashboard(processed, past, keyword, category, sub_category, sentiments)
 
 
 if __name__ == "__main__":

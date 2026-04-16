@@ -1,4 +1,9 @@
-"""허용 sub_category 목록 렌더링 + 경계 규칙(간단 버전)."""
+"""허용 sub_category 목록 렌더링 + 경계 규칙(간단 버전).
+
+중요:
+- category/sub_category 값은 아래 허용 목록 중 하나를 '정확히 그대로' 사용해야 한다.
+  (문자열 순서 변경/슬래시 위치 변경/띄어쓰기 변경 금지: 예) "예능/방송" → "방송/예능" 금지)
+"""
 
 from __future__ import annotations
 

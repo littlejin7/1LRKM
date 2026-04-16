@@ -1,10 +1,11 @@
 """
-04.vectorstore.py — 임베딩 + ChromaDB 저장
+vectorstore.py — 임베딩 + ChromaDB 저장
 
 역할:
   스크립트 실행 시: k_enter_news.db → 임베딩 → ChromaDB 저장 (2개 collection)
-  get_stores()     : 저장된 벡터스토어 불러오기
+  get_stores()  : 저장된 벡터스토어 불러오기
 """
+
 import os
 import sqlite3
 import json
@@ -38,6 +39,41 @@ def get_stores():
     return recent, past
 
 
+# ── summary JSON → 텍스트 변환 헬퍼 ──
+def summary_to_text(summary_raw) -> str:
+    """summary JSON(List[{label, content}]) → 텍스트"""
+    if not summary_raw:
+        return ""
+    try:
+        items = json.loads(summary_raw) if isinstance(summary_raw, str) else summary_raw
+        if isinstance(items, list):
+            return " ".join([item.get("content", "") for item in items if isinstance(item, dict)])
+        return str(items)
+    except Exception:
+        return str(summary_raw)
+
+
+def artists_to_text(artist_tags_raw) -> str:
+    """artist_tags JSON → 텍스트"""
+    if not artist_tags_raw:
+        return ""
+    try:
+        items = json.loads(artist_tags_raw) if isinstance(artist_tags_raw, str) else artist_tags_raw
+        return ", ".join(items) if isinstance(items, list) else str(items)
+    except Exception:
+        return str(artist_tags_raw)
+
+
+def keywords_to_list(keywords_raw) -> list:
+    if not keywords_raw:
+        return []
+    try:
+        items = json.loads(keywords_raw) if isinstance(keywords_raw, str) else keywords_raw
+        return items if isinstance(items, list) else []
+    except Exception:
+        return []
+
+
 # ═══════════════════════════════════════════════════
 # 임베딩 + 저장 (스크립트 실행 시)
 # ═══════════════════════════════════════════════════
@@ -49,78 +85,89 @@ def build_and_save():
 
     embedding = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
 
-    # ── processed_news → recent_news collection ──
-    cursor.execute(
-        """
-    SELECT id, raw_news_id, category, summary, keywords, artist_tags,
-           sentiment, sentiment_score, source_name, url, processed_at
-    FROM processed_news
-    """
-    )
+    cursor.execute("""
+        SELECT p.id, p.raw_news_id, p.category, p.sub_category,
+               p.summary, p.keywords, p.artist_tags, p.sentiment,
+               p.importance, p.source_name, p.url, p.processed_at,
+               p.published_at, p.language,
+               p.ko_title
+        FROM processed_news p
+    """)
 
     recent_docs = []
     for row in cursor.fetchall():
-        keywords = json.loads(row["keywords"]) if row["keywords"] else []
-        artists = json.loads(row["artist_tags"]) if row["artist_tags"] else []
+        keywords = keywords_to_list(row["keywords"])
+        artists  = artists_to_text(row["artist_tags"])
+        summary  = summary_to_text(row["summary"])
+        title    = row["ko_title"] or ""
 
-        content = f"""{row["summary"]}
+        content = f"""{title}
 
-아티스트: {', '.join(artists)}
+{summary}
+
+아티스트: {artists}
 키워드: {', '.join(keywords)}
-카테고리: {row["category"]}"""
+카테고리: {row["sub_category"] or ""}"""
 
         doc = Document(
             page_content=content,
             metadata={
                 "id": row["id"] or 0,
                 "raw_news_id": row["raw_news_id"] or 0,
+                "title": title,
                 "category": row["category"] or "",
+                "sub_category": row["sub_category"] or "",
+                "artist_tags": artists,
                 "sentiment": row["sentiment"] or "",
-                "sentiment_score": row["sentiment_score"] or 0.0,
+                "importance": row["importance"] or 0,
                 "source": row["source_name"] or "",
                 "url": row["url"] or "",
-                "processed_at": str(row["processed_at"]) if row["processed_at"] else "",
-            },  
+                "language": row["language"] or "",
+                "published_at": str(row["published_at"]) if row["published_at"] else "",
+            },
         )
         recent_docs.append(doc)
 
     print(f"recent_news: {len(recent_docs)}건")
 
-    # ── past_news → past_news collection ──
-    cursor.execute(
-        """
-    SELECT id, processed_news_id, artist_name, artist_type, artist_agency,
-           title, content, url, published_at, summary, category, keywords,
-           sentiment, sentiment_score, relevance_score, relation_type,
-           crawled_at, source_name
-    FROM past_news
-    """
-    )
+    cursor.execute("""
+        SELECT p.id, p.processed_news_id, p.category, p.sub_category,
+               p.summary, p.keywords, p.artist_tags, p.sentiment,
+               p.importance, p.source_name, p.url, p.published_at,
+               p.language,p.artist_name,
+               p.ko_title
+        FROM past_news p
+    """)
 
     past_docs = []
     for row in cursor.fetchall():
-        keywords = json.loads(row["keywords"]) if row["keywords"] else []
+        keywords = keywords_to_list(row["keywords"])
+        artists  = artists_to_text(row["artist_tags"])
+        summary  = summary_to_text(row["summary"])
+        title    = row["ko_title"] or ""
 
-        content = f"""{row["summary"] or row["content"] or row["title"]}
+        content = f"""{title}
 
-아티스트: {row["artist_name"]}
+{summary}
+
+아티스트: {artists}
 키워드: {', '.join(keywords)}
-카테고리: {row["category"]}
-관계유형: {row["relation_type"] or "N/A"}"""
+카테고리: {row["sub_category"] or ""}"""
 
         doc = Document(
             page_content=content,
             metadata={
                 "id": row["id"] or 0,
                 "processed_news_id": row["processed_news_id"] or 0,
-                "artist_name": row["artist_name"] or "",
-                "artist_type": row["artist_type"] or "",
-                "artist_agency": row["artist_agency"] or "",
+                "title": title,
                 "category": row["category"] or "",
+                "sub_category": row["sub_category"] or "",
+                "artist_tags": artists,
                 "sentiment": row["sentiment"] or "",
-                "sentiment_score": row["sentiment_score"] or 0.0,
+                "importance": row["importance"] or 0,
                 "source": row["source_name"] or "",
                 "url": row["url"] or "",
+                "language": row["language"] or "",
                 "published_at": str(row["published_at"]) if row["published_at"] else "",
             },
         )
