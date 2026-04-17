@@ -117,7 +117,6 @@ def build_and_save():
                 "title": title,
                 "category": row["category"] or "",
                 "sub_category": row["sub_category"] or "",
-                "artist_tags": artists,
                 "sentiment": row["sentiment"] or "",
                 "importance": row["importance"] or 0,
                 "source": row["source_name"] or "",
@@ -142,7 +141,6 @@ def build_and_save():
     past_docs = []
     for row in cursor.fetchall():
         keywords = keywords_to_list(row["keywords"])
-        artists  = artists_to_text(row["artist_tags"])
         summary  = summary_to_text(row["summary"])
         title    = row["ko_title"] or ""
 
@@ -150,9 +148,7 @@ def build_and_save():
 
 {summary}
 
-아티스트: {artists}
-키워드: {', '.join(keywords)}
-카테고리: {row["sub_category"] or ""}"""
+키워드: {', '.join(keywords)}"""
 
         doc = Document(
             page_content=content,
@@ -160,9 +156,9 @@ def build_and_save():
                 "id": row["id"] or 0,
                 "processed_news_id": row["processed_news_id"] or 0,
                 "title": title,
+                "artist_name": row["artist_name"] or "",
                 "category": row["category"] or "",
                 "sub_category": row["sub_category"] or "",
-                "artist_tags": artists,
                 "sentiment": row["sentiment"] or "",
                 "importance": row["importance"] or 0,
                 "source": row["source_name"] or "",

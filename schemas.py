@@ -77,7 +77,7 @@ class TimelineItem(BaseModel):
 
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
-    date: str = Field(..., description="YYYY-MM 형식만 허용")
+    date: str = Field(..., description="") 
     event: str = Field(
         ..., min_length=1, max_length=200, description="본문에 명시된 사건"
     )

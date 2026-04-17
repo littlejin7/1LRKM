@@ -146,7 +146,7 @@ def render_metrics(processed: list, past: list):
 
     top_artist = "-"
     if processed:
-        top = max(processed, key=lambda x: float(x.get("sentiment_score", 0)))
+        top = processed[0]  # 이미 importance 순 정렬된 첫 번째 = 1위
         tags = top.get("artist_tags", [])
         top_artist = tags[0] if tags else top.get("title", "-")[:6]
 
@@ -200,8 +200,7 @@ def render_ranking(filtered: list):
         summary_text = summary[0].get("content", "")
     else:
         summary_text = str(summary or "")
-    score = float(featured.get("sentiment_score", 0))
-    score_display = f"{score * 100:.0f}점" if score <= 1.0 else f"{score:.0f}점"
+
 
     if briefing_click:
         top5 = filtered[:5]
@@ -233,19 +232,14 @@ def render_ranking(filtered: list):
             <div>
               {_thumb_html(featured.get("thumbnail_url", ""), featured=True)}
               <div class="featured-rank">01</div>
-              <div style="margin:8px 0 4px;display:flex;align-items:center;gap:8px;">
-                {_badge(featured.get("sentiment","neutral"))}
-                <span style="font-size:11px;color:#8b7355;">기사 1건</span>
-              </div>
-              <div class="featured-artist">{artist_name}</div>
-              <div class="featured-headline">{featured.get("title","")[:35]}</div>
-              <div class="featured-summary">{summary_text[:120]}</div>
-              <div style="margin-top:16px;padding-top:12px;border-top:1px solid #d4c4a8;">
-                <span style="font-size:12px;color:#8b7355;">감성 스코어</span>
-                <span style="font-size:22px;font-weight:900;color:#155724;
-                    margin-left:8px;font-family:'Noto Serif KR',serif;">{score_display}</span>
-              </div>
+              <div style="margin:8px 0 16px;display:flex;align-items:center;gap:8px;">
+                 {_badge(featured.get("sentiment","neutral"))}
+              <span style="font-size:11px;color:#8b7355;">기사 1건</span>
             </div>
+              <div class="featured-artist">{featured.get("title","")[:35]}</div>
+              <div class="featured-headline">{artist_name}</div>
+              <div class="featured-summary">{summary_text[:120]}</div>
+           </div>
             """,
                 unsafe_allow_html=True,
             )
@@ -277,11 +271,7 @@ def render_ranking(filtered: list):
                 item_summary_text = item_summary[0].get("content", "")
             else:
                 item_summary_text = str(item_summary or "")
-            item_score = float(item.get("sentiment_score", 0))
-            item_score_display = (
-                f"{item_score * 100:.0f}" if item_score <= 1.0 else f"{item_score:.0f}"
-            )
-            change_html = _change_badge(item_score)
+
 
             col = col_a if i % 2 == 0 else col_b
             with col:
@@ -294,20 +284,16 @@ def render_ranking(filtered: list):
                         <span class="rank-num {rank_cls}">{str(rank).zfill(2)}</span>
                         <div style="flex:1;min-width:0;">
                           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                            <span class="artist-name">{item_artist}</span>
-                            {change_html}
-                          </div>
-                          <div class="headline">{item.get("title","")[:30]}</div>
+                           <span class="artist-name">{item.get("title","")[:30]}</span>
+                            </div>
+                            <div class="headline">{item_artist}</div>
                         </div>
                       </div>
                       <div class="summary-text">{item_summary_text[:70]}</div>
-                      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
-                        {_badge(item.get("sentiment","neutral"))}
+                      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;margin-bottom:12px;flex-wrap:wrap;">
+                    {_badge(item.get("sentiment","neutral"))}
                         <span style="font-size:11px;color:#8b7355;">기사 1건</span>
-                        <span style="font-size:11px;color:#8b4513;margin-left:auto;font-weight:700;">
-                          {item_score_display}점
-                        </span>
-                      </div>
+                        </div>
                     </div>
                     """,
                         unsafe_allow_html=True,
@@ -427,7 +413,6 @@ def render_past(filtered_past: list):
                 unsafe_allow_html=True,
             )
 
-
 # ── 메인 대시보드 ─────────────────────────────────────────────────────────────
 
 
@@ -440,14 +425,14 @@ def render_dashboard(
     sentiments: list[str],
 ):
     render_header()
-    render_metrics(processed, past)
-
+    
     filtered_processed = [
         x for x in processed if _match(x, keyword, category, sub_category, sentiments)
     ]
     filtered_past = [
         x for x in past if _match(x, keyword, category, sub_category, sentiments)
     ]
+
 
     # 대시보드의 1~10위(DB 로드) 로직을 그대로 가져옴
     from pages.dashboard import load_from_db
@@ -463,7 +448,7 @@ def render_dashboard(
         for x in dashboard_top_10
         if _match(x, keyword, category, sub_category, sentiments)
     ]
-
+    render_metrics(processed, past)
     # rank.id를 이용하도록 화면에 보여주기
     render_ranking(ranking_items)
     render_sentiment_chart(processed)
