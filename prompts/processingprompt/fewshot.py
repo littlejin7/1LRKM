@@ -48,7 +48,7 @@ FEWSHOT_BLOCK = r"""
     {"label": "Not Finalized", "content": "However, the final decision and timeline were said to be unconfirmed."},
     {"label": "Industry Context", "content": "The news is being read in the context of broader distribution diversification in the industry."}
   ],
-  "artist_tags": [],
+  "artist_name": "",
   "keywords": ["플랫폼 협업", "유통 채널", "검토 단계", "해외 보도", "산업 전략"],
   "category": "산업/기획사",
   "sub_category": "산업/기획사",

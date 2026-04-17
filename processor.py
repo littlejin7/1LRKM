@@ -21,7 +21,7 @@ from pydantic import ValidationError
 from database import RawNews, ProcessedNews, PastNews, get_session
 from schemas import KpopNewsSummary, summary_to_processed_payload
 
-from prompts.summary import get_summary_prompts
+from prompts.processingprompt import get_summary_prompts
 
 # 파일 로딩 시점에 시스템 프롬프트와 유저 템플릿을 한 번만 불러옵니다.
 SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_PROMPT_TEMPLATE = get_summary_prompts()
