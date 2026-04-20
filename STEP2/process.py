@@ -49,10 +49,5 @@ def main():
     if result.returncode != 0:
         print("  [WARN] timeline.py 실행 실패 또는 파일 없음 - 스킵")
 
-    # 6. 스트림릿 실행
-    print("\n[5] 스트림릿 실행...")
-    subprocess.run(["streamlit", "run", "STEP3/run.py"])
-
-
 if __name__ == "__main__":
     main()
