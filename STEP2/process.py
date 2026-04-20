@@ -1,6 +1,6 @@
 """
-main.py -- 전체 파이프라인 순서대로 실행
-실행: python main.py
+process.py -- 전체 파이프라인 순서대로 실행
+실행: python STEP2/process.py
 """
 
 import sys
