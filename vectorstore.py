@@ -133,7 +133,7 @@ def build_and_save():
         SELECT p.id, p.processed_news_id, p.category, p.sub_category,
                p.summary, p.keywords, p.artist_tags, p.sentiment,
                p.importance, p.source_name, p.url, p.published_at,
-               p.language,p.artist_name,
+               p.language,
                p.ko_title
         FROM past_news p
     """)
@@ -156,7 +156,6 @@ def build_and_save():
                 "id": row["id"] or 0,
                 "processed_news_id": row["processed_news_id"] or 0,
                 "title": title,
-                "artist_name": row["artist_name"] or "",
                 "category": row["category"] or "",
                 "sub_category": row["sub_category"] or "",
                 "sentiment": row["sentiment"] or "",

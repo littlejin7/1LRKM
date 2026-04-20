@@ -50,6 +50,7 @@ class RawNews(Base):
     published_at = Column(DateTime, nullable=True)
     crawled_at = Column(DateTime, default=datetime.now)
     is_processed = Column(Boolean, default=False)
+    skip_reason = Column(Text, nullable=True)  # 가공 실패 시 사유 기록
     category = Column(String(50), nullable=True)  # 대분류  (ex: 컨텐츠&작품)
     sub_category = Column(String(100), nullable=True)  # 중분류 (ex:음악.차트)
 
@@ -73,9 +74,6 @@ class ProcessedNews(Base):
     # ── 요약 (스키마: summary, summary_en) ──
     summary = Column(JSON, nullable=True)  # List[str] 5~7문장 한국어
     summary_en = Column(JSON, nullable=True)  # List[str] 5~7문장 영어
-
-    # ── 브리핑 (스키마: briefing) ──
-    briefing = Column(JSON, nullable=True)  # [{"label": str, "content": str}, ...]
 
     # ── 태그 (스키마: keywords, artist) ──
     keywords = Column(JSON, nullable=True)  # List[str] 정확히 5개
@@ -124,16 +122,13 @@ class PastNews(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     
-    # [핵심 수정] processed_news 테이블과 연결되는 외래 키 설정을 명시해야 합니다.
     processed_news_id = Column(Integer, ForeignKey("processed_news.id"), nullable=True)
-    artist_name = Column(String(100), nullable=True)
     category = Column(String(40), nullable=True)  # 대분류
     sub_category = Column(String(100), nullable=True)  # 중분류
     ko_title = Column(Text, nullable=True)  # 추가
     is_k_ent = Column(Boolean, default=True)  # 추가
     summary = Column(JSON, nullable=True)
     summary_en = Column(JSON, nullable=True)
-    briefing = Column(JSON, nullable=True)
     keywords = Column(JSON, nullable=True)
     artist_tags = Column(JSON, nullable=True)
     sentiment = Column(String(10), nullable=True)
@@ -151,16 +146,15 @@ class PastNews(Base):
     processed_at = Column(DateTime, default=datetime.now)
     published_at = Column(DateTime, nullable=True)
     crawled_at = Column(DateTime, nullable=True)
-
+    
     __table_args__ = (
-        # 여기서 'artist_name'을 사용하고 있기 때문에 위에서 정의가 되어야 합니다.
-        UniqueConstraint("url", "artist_name", name="uq_past_url_artist"),
+        UniqueConstraint("url", name="uq_past_url"),
     )
 
     processed = relationship("ProcessedNews", backref="past_news_list")
 
     def __repr__(self):
-        return f"<PastNews(id={self.id}, artist='{self.artist_name}', title='{self.title[:30]}...')>"
+        return f"<PastNews(id={self.id}, tags={self.artist_tags})>"
 
 
 # ── 테이블 생성 ──
@@ -181,7 +175,6 @@ def _sqlite_add_missing_columns() -> None:
             ("category", "VARCHAR(40)"), #대분류
             ("sub_category", "VARCHAR(40)"), #중분류
             ("summary_en", "TEXT"),
-            ("briefing", "TEXT"),
             ("importance", "INTEGER"),
             ("importance_reason", "TEXT"),
             ("trend_insight", "TEXT"),
@@ -213,12 +206,6 @@ _sqlite_add_missing_columns()
 # ── 세션 헬퍼 ──
 @contextmanager
 def get_session():
-    """
-    사용법:
-        with get_session() as session:
-            session.add(...)
-            session.commit()
-    """
     session = SessionLocal()
     try:
         yield session

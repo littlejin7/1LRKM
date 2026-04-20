@@ -15,6 +15,8 @@ from categories import all_majors, subs_for_majors
 LOGO_PATH = Path(__file__).resolve().parent / "assets" / "logo.png"
 
 
+
+
 def render_sidebar() -> tuple[str, str, str, list[str], bool]:
     with st.sidebar:
         # ── 로고 ──────────────────────────────────────
@@ -53,22 +55,6 @@ def render_sidebar() -> tuple[str, str, str, list[str], bool]:
             label_visibility="collapsed",
         )
 
-        # ── 중분류 ─────────────────────────────────────
-        selected_categories = [] if category == "전체" else [category]
-        sub_category_options = ["전체"] + subs_for_majors(selected_categories)
-
-        st.markdown(
-            '<div style="font-size:13px;font-weight:700;color:#5c4a3a;margin:12px 0 8px;">분류</div>',
-            unsafe_allow_html=True,
-        )
-        sub_category = st.selectbox(
-            label="중분류",
-            options=sub_category_options,
-            label_visibility="collapsed",
-        )
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
         # ── 감성 필터 ──────────────────────────────────
         st.markdown(
             '<div style="font-size:13px;font-weight:700;color:#5c4a3a;margin-bottom:8px;">필터</div>',
@@ -84,17 +70,20 @@ def render_sidebar() -> tuple[str, str, str, list[str], bool]:
         st.markdown("<br>", unsafe_allow_html=True)
 
         # ── 아티스트 검색 ──────────────────────────────
+
         st.markdown(
             '<div style="font-size:13px;font-weight:700;color:#5c4a3a;margin-bottom:8px;">키워드 검색</div>',
-            unsafe_allow_html=True,
+           unsafe_allow_html=True,
         )
+
         keyword = st.text_input(
-            label="검색어",
+           label="검색어",
             placeholder="예: 예시, 설정…",
             label_visibility="collapsed",
         )
 
         st.markdown("<br>", unsafe_allow_html=True)
+
 
         # ── 자동 새로고침 ──────────────────────────────
         st.markdown("---")
@@ -110,6 +99,7 @@ def render_sidebar() -> tuple[str, str, str, list[str], bool]:
             )
             st.caption("⏱️ 60초마다 자동 갱신")
 
+
         # ── 인용구 ─────────────────────────────────────
         st.markdown("---")
         st.markdown(
@@ -120,5 +110,4 @@ def render_sidebar() -> tuple[str, str, str, list[str], bool]:
         """,
             unsafe_allow_html=True,
         )
-
-    return keyword, category, sub_category, sentiments, auto_refresh
+    return keyword, category, "전체", sentiments, auto_refresh

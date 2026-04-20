@@ -57,7 +57,6 @@ FEWSHOT_BLOCK = r"""
   "ko_title": "대형 기획사, 신규 플랫폼 협업 검토 중",
   "is_k_ent": true,
   "sentiment": "중립",
-  "sentiment_score": null,
   "importance": 3,
   "importance_reason": "[IP0+사건1+파급1+기본1=3] 특정 아티스트 소식은 아니나 업계 유통 구조 변화를 시사합니다.",
   "trend_insight": "콘텐츠 유통 채널의 다변화가 가속화되고 있습니다.",

@@ -52,7 +52,8 @@ SUMMARY_USER_PROMPT = """[제목]
 {content}
 
 [크롤러 힌트(참고만)]
-{raw_category_hint}
+- 카테고리: {raw_category_hint}
+- 아티스트: {raw_artist_hint}
 """
 
 

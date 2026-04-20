@@ -1,6 +1,4 @@
-"""
-components/main_page.py — 대시보드 메인 컴포넌트 (수묵화 스타일)
-"""
+
 
 import sys
 from pathlib import Path
@@ -15,6 +13,12 @@ import edge_tts
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import base64
+# -- 보고서
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 from categories import accent_color_for_row, resolve_row_categories
 
@@ -103,7 +107,6 @@ def _match(
             [
                 item.get("title", ""),
                 item.get("source_name", ""),
-                item.get("artist_name", ""),
                 " ".join(map(str, item.get("artist_tags", []))),
                 " ".join(map(str, item.get("keywords", []))),
             ]
@@ -115,24 +118,89 @@ def _match(
 # ── 헤더 ─────────────────────────────────────────────────────────────────────
 
 
+def get_base64_image(image_path):
+    with open(image_path, "rb") as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
+
 def render_header():
-    today = datetime.now().strftime("%Y년 %m월 %d일")
+    img_base64 = get_base64_image(TITLE_IMG)
+    st.markdown(f"""
+        <style>
+            header[data-testid="stHeader"] {{
+                display: none;
+            }}
+            .custom-header {{
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                z-index: 9999;
+                background-color: transparent;  
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                padding: 10px 0;
+                height: 120px;  /* 헤더 높이*/
+            }}
+            .custom-header img {{
+                height: 150px;  /*  이미지 크기  */
+                width: auto;
+                object-fit: contain;
+            }}
+            .main .block-container {{
+                padding-top: 200px !important;  /* 
+            }}
+        </style>
+        <div class="custom-header">
+            <img src="data:image/png;base64,{img_base64}" alt="header logo">
+        </div>
+    """, unsafe_allow_html=True)
 
-    # 날짜 오른쪽 정렬
-    st.markdown(
-        f'<div style="text-align:right;"><span class="date-badge">📅 {today}</span></div>',
-        unsafe_allow_html=True,
-    )
+# ── 보고서 PDF 생성 ───────────────────────────────────────────────────────────
+def generate_report_pdf(filtered: list) -> bytes:
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
 
-    # 이미지 가운데 정렬
-    col1, col2, col3 = st.columns([1, 1.5, 1])
-    with col2:
-        st.image(str(TITLE_IMG), use_container_width=True)  # 크기 크게
+    c.setFont("Helvetica-Bold", 18)
+    c.drawString(50, height - 60, "K-ENT Today News Report")
+    c.setFont("Helvetica", 11)
+    c.drawString(50, height - 85, f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    c.line(50, height - 100, width - 50, height - 100)
 
-    st.markdown(
-        '<hr style="border:none;border-top:2px solid #2c1810;margin:8px 0 12px;">',
-        unsafe_allow_html=True,
-    )
+    y = height - 130
+    for i, item in enumerate(filtered[:10], 1):
+        if y < 100:
+            c.showPage()
+            y = height - 60
+
+        title = item.get("title", "")[:50]
+        category = item.get("sub_category", item.get("category", ""))
+        sentiment = item.get("sentiment", "")
+
+        summary = item.get("summary", "")
+        if isinstance(summary, list) and summary:
+            first = summary[0]
+            summary_text = first.get("content", str(first)) if isinstance(first, dict) else str(first)
+        else:
+            summary_text = str(summary or "")
+
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(50, y, f"{i}. {title}")
+        y -= 18
+        c.setFont("Helvetica", 10)
+        c.drawString(60, y, f"Category: {category}  |  Sentiment: {sentiment}")
+        y -= 15
+        c.setFont("Helvetica", 9)
+        c.drawString(60, y, summary_text[:80])
+        y -= 25
+        c.line(50, y, width - 50, y)
+        y -= 15
+
+    c.save()
+    buffer.seek(0)
+    return buffer.read()
 
 
 # ── 메트릭 카드 ───────────────────────────────────────────────────────────────
@@ -182,15 +250,20 @@ def render_ranking(filtered: list):
         )
         return
 
-    title_col, btn_col = st.columns([4, 1])
+    title_col, report_col, btn_col = st.columns([3, 1, 1])
     with title_col:
-        st.markdown(
-            '<div class="section-title">🏆 오늘의 랭킹</div>', unsafe_allow_html=True
+        st.markdown('<div class="section-title">🏆 오늘의 랭킹</div>', unsafe_allow_html=True)
+    with report_col:
+        pdf_bytes = generate_report_pdf(filtered)  # ✅ filtered 전달
+        st.download_button(
+            label=" 📄오늘의 종합 보고서",
+            data=pdf_bytes,
+            file_name=f"K-ENT_보고서_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
         )
     with btn_col:
-        briefing_click = st.button(
-            "🎙️ 오늘의 뉴스 브리핑 듣기", use_container_width=True
-        )
+        briefing_click = st.button("🎙️ 오늘의 뉴스 브리핑 듣기", use_container_width=True)
 
     featured = filtered[0]
     tags = featured.get("artist_tags", [])
@@ -308,110 +381,6 @@ def render_ranking(filtered: list):
                         st.switch_page("pages/dashboard.py")
 
 
-# ── 감성 추이 차트 ────────────────────────────────────────────────────────────
-
-
-def render_sentiment_chart(processed: list):
-    st.markdown(
-        '<div class="section-title">📊 오늘의 감성 추이</div>', unsafe_allow_html=True
-    )
-
-    pos = sum(1 for x in processed if x.get("sentiment") in ["positive", "긍정"])
-    neg = sum(1 for x in processed if x.get("sentiment") in ["negative", "부정"])
-    neu = sum(1 for x in processed if x.get("sentiment") in ["neutral", "중립"])
-
-    sub_count: dict[str, int] = {}
-    for item in processed:
-        _, sub = resolve_row_categories(item)
-        sub_count[sub] = sub_count.get(sub, 0) + 1
-
-    col1, col2 = st.columns([1, 2])
-
-    with col1:
-        fig_pie = go.Figure(
-            data=[
-                go.Pie(
-                    labels=["긍정", "부정", "중립"],
-                    values=[pos, neg, neu],
-                    hole=0.55,
-                    marker=dict(colors=["#6aaa6a", "#cc6666", "#6699cc"]),
-                )
-            ]
-        )
-        fig_pie.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#5c4a3a", family="Noto Sans KR"),
-            legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#5c4a3a")),
-            margin=dict(l=10, r=10, t=10, b=10),
-            height=220,
-        )
-        fig_pie.update_traces(textinfo="percent", textfont_size=13)
-        st.plotly_chart(fig_pie, use_container_width=True)
-
-    with col2:
-        if sub_count:
-            df = pd.DataFrame(
-                [
-                    {"카테고리": k, "기사수": v}
-                    for k, v in sorted(sub_count.items(), key=lambda x: -x[1])
-                ]
-            )
-            fig_bar = go.Figure(
-                go.Bar(
-                    x=df["기사수"],
-                    y=df["카테고리"],
-                    orientation="h",
-                    marker_color="#8b4513",
-                    marker_opacity=0.75,
-                )
-            )
-            fig_bar.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#5c4a3a", family="Noto Sans KR"),
-                xaxis=dict(gridcolor="#d4c4a8", color="#5c4a3a"),
-                yaxis=dict(gridcolor="#d4c4a8", color="#5c4a3a"),
-                margin=dict(l=10, r=10, t=10, b=10),
-                height=220,
-            )
-            st.plotly_chart(fig_bar, use_container_width=True)
-
-
-# ── 과거 기사 ─────────────────────────────────────────────────────────────────
-
-
-def render_past(filtered_past: list):
-    if not filtered_past:
-        return
-    st.markdown(
-        '<div class="section-title">🗂️ 연관 과거 기사</div>', unsafe_allow_html=True
-    )
-    cols_p = st.columns(2)
-    for i, item in enumerate(filtered_past[:10]):
-        summary = item.get("summary", "")
-        with cols_p[i % 2]:
-            st.markdown(
-                f"""
-            <div class="news-card">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
-                {_badge(item.get("sentiment","neutral"))}
-                {_cat_badge(item)}
-              </div>
-              <div class="artist-name">{item.get("artist_name") or "-"}</div>
-              <div class="headline">{item.get("title","")[:40]}</div>
-              <div class="summary-text">{(summary or "")[:80]}</div>
-              <div style="display:flex;gap:8px;margin-top:6px;font-size:11px;color:#8b7355;">
-                <span>📰 {item.get("source_name","-")}</span>
-                <span>📅 {item.get("published_at","-")}</span>
-                <span style="margin-left:auto;color:#8b4513;font-weight:700;">
-                    관련도 {float(item.get("relevance_score",0)):.2f}
-                </span>
-              </div>
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
 
 # ── 메인 대시보드 ─────────────────────────────────────────────────────────────
 
@@ -451,5 +420,3 @@ def render_dashboard(
     render_metrics(processed, past)
     # rank.id를 이용하도록 화면에 보여주기
     render_ranking(ranking_items)
-    render_sentiment_chart(processed)
-    render_past(filtered_past)

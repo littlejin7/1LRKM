@@ -95,7 +95,7 @@ def load_past():
     cur.execute(
         """
         SELECT
-            id, processed_news_id, artist_name, title, url, summary,
+            id, processed_news_id, artist_tags, title, url, summary,
             relation_type, relevance_score, sentiment, category,
             source_name, published_at
         FROM past_news
@@ -108,7 +108,7 @@ def load_past():
         {
             "id": r["id"],
             "processed_news_id": r["processed_news_id"],
-            "artist_name": r["artist_name"] or "",
+            "artist_name": (_j(r["artist_tags"])[0] if _j(r["artist_tags"]) else ""),
             "title": r["title"] or "",
             "url": r["url"] or "",
             "summary": r["summary"] or "",

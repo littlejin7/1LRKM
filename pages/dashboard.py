@@ -1,7 +1,4 @@
-"""
-streamlit_app.py — 뉴스 대시보드 UI
-실행: streamlit run streamlit_app.py
-"""
+
 
 import sqlite3
 import json
@@ -67,14 +64,16 @@ st.markdown(
 }
 
 /* 요약 카드 (label + content) */
+# 비율고정#
 .summary-row {
-    display: flex;
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: 2fr 8fr;
     gap: 10px;
     margin-bottom: 10px;
     font-size: 0.92rem;
     color: #1a1a2e;
     line-height: 1.6;
+    align-items: start;
 }
 .summary-label {
     background: #e8f0fe;
@@ -83,15 +82,16 @@ st.markdown(
     font-weight: 700;
     padding: 3px 9px;
     border-radius: 20px;
-    white-space: nowrap;
-    margin-top: 2px;
-    min-width: fit-content;
+    font-weight: 700;
+    word-break: keep-all;
+    text-align: center;
+    line-height: 1.5;
 }
 
 /* 키워드 태그 */
 .keyword-wrap { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .keyword-tag {
-    background: #f0f0f0;
+    background: #FFB3B3;
     color: #333;
     font-size: 0.82rem;
     padding: 4px 12px;
@@ -133,10 +133,28 @@ st.markdown(
     gap: 12px;
     margin-bottom: 14px;
     align-items: flex-start;
+    position: relative;  /* 추가 */
+}
+.timeline-item::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 14px;
+    width: 2px;
+    height: calc(100% + 14px);
+    background: #e0e0e0;
+}
+.timeline-item:last-child::before {
+    display: none;
+}
+.timeline-wrap {
+    position: relative;
+    padding-left: 4px;
 }
 .timeline-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
 .timeline-dot-active  { background: #2ecc71; }
 .timeline-dot-neutral { background: #bbb; }
+.timeline-dot-negative { background: #e74c3c; }
 .timeline-date  { font-size: 0.78rem; color: #888; margin-bottom: 2px; }
 .timeline-event { font-size: 0.88rem; font-weight: 600; color: #1a1a2e; }
 .sentiment-badge {
@@ -149,6 +167,7 @@ st.markdown(
 }
 .badge-current { background: #cce5ff; color: #004085; }
 .badge-neutral { background: #e2e3e5; color: #495057; }
+.badge-negative { background: #f8d7da; color: #721c24; }
 
 /* RAG 카드 */
 .rag-card {
@@ -216,7 +235,7 @@ def load_from_db():
             FROM processed_news p
             WHERE p.importance IS NOT NULL
             AND p.category = ?
-            ORDER BY p.importance DESC
+            ORDER BY p.importance DESC, p.id DESC
             LIMIT ?
         """,
             (category, limit),
@@ -337,28 +356,32 @@ def main():
         st.error("뉴스 데이터가 없습니다.")
         return
 
-    # 순위 선택
-    rank_labels = [f"{i+1}위" for i in range(len(top_news_list))]
-
-    # 메인 페이지에서 "상세보기"를 누르고 넘어온 경우, 해당 기사의 라디오 버튼을 기본값으로 강제 세팅
+## 1개만 표시 되게
+    idx = 0
     if "detail_id" in st.session_state:
-        target_id = st.session_state["detail_id"]
-        for j, news_item in enumerate(top_news_list):
+     target_id = st.session_state["detail_id"]
+     for j, news_item in enumerate(top_news_list):
             if news_item["id"] == target_id:
-                st.session_state["rank_radio"] = rank_labels[j]
-                break
-        del st.session_state["detail_id"]  # 일회성으로 소모
+              idx = j
+              break
 
-    selected_rank = st.radio(
-        "뉴스 순위 선택",
-        rank_labels,
-        key="rank_radio",
-        horizontal=True,
-        label_visibility="collapsed",
-    )
-    idx = rank_labels.index(selected_rank)
     news = top_news_list[idx]
 
+## 맘에 안들면 삭제 ## 이전 다음 버튼
+
+    col1, col2, col3 = st.columns([1, 4, 1])
+    with col1:
+        if idx > 0:
+            if st.button("◀ 이전"):
+                st.session_state["detail_id"] = top_news_list[idx - 1]["id"]
+                st.rerun()
+    with col2:
+                st.markdown(f"<div style='text-align:center;font-weight:700;'>{idx+1}위 / {len(top_news_list)}위</div>", unsafe_allow_html=True)
+    with col3:
+        if idx < len(top_news_list) - 1:
+            if st.button("다음 ▶"):
+                st.session_state["detail_id"] = top_news_list[idx + 1]["id"]
+                st.rerun()
     so_what = news.get("trend_insight", "")
 
     # 85% 이상 유사도 필터링
@@ -456,13 +479,34 @@ def main():
         <div class='widget-card'>
             <div class='widget-title'>
                 <span class='dot-blue'></span>
-                위젯 2 · {artist_name} 6개월 타임라인
-            </div>"""
+                위젯 2 · 연관 기사 타임라인
+            </div>
+            <div class='timeline-wrap'>"""
         for i, item in enumerate(timeline):
-            is_last = i == len(timeline) - 1
-            dot_class = "timeline-dot-active" if is_last else "timeline-dot-neutral"
-            badge_cls = "badge-current" if is_last else "badge-neutral"
-            badge_txt = "긍정·현재" if is_last else "중립"
+            is_last = (i == 0)
+
+            sentiment = item.get("sentiment", "neutral")
+
+            if sentiment == "positive":
+                dot_class = "timeline-dot-active"
+            elif sentiment == "negative":
+                dot_class = "timeline-dot-negative"
+            else:
+                dot_class = "timeline-dot-neutral"
+
+            if sentiment == "positive":
+                badge_cls = "badge-current"
+                badge_txt = "긍정"
+            elif sentiment == "negative":
+                badge_cls = "badge-negative"
+                badge_txt = "부정"
+            else:
+                badge_cls = "badge-neutral"
+                badge_txt = "중립"
+
+            if is_last:
+                badge_txt += "·현재"
+
             timeline_html += f"""
             <div class='timeline-item'>
                 <div class='timeline-dot {dot_class}'></div>
@@ -472,7 +516,7 @@ def main():
                     <span class='sentiment-badge {badge_cls}'>{badge_txt}</span>
                 </div>
             </div>"""
-        timeline_html += "</div>"
+        timeline_html += "</div></div>"
         st.markdown(timeline_html, unsafe_allow_html=True)
 
         # ── 위젯 3: 과거 유사 사례 (85% 이상만) ──
@@ -490,7 +534,14 @@ def main():
                 s_class = score_class(pct)
                 title = meta.get("title") or r["content"][:60]
                 cat = meta.get("sub_category", "")
-                artist = meta.get("artist_name", "")
+                artist_list = meta.get("artist_tags", [])
+                # 만약 리스트가 아니라 문자열(JSON)로 저장되어 있을 경우를 대비
+                if isinstance(artist_list, str):
+                    try:
+                        artist_list = json.loads(artist_list)
+                    except:
+                        artist_list = [artist_list]
+                artist = artist_list[0] if artist_list else ""
                 rag_html += f"""
                 <div class='rag-card'>
                     <div class='rag-score {s_class}'>{pct}%</div>

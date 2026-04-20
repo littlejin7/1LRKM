@@ -2,22 +2,30 @@
 03.processor.py — LLM 가공 + 최신 뉴스 이미지 수집 (3일 기준 분기 처리 버전)
 
 수정 사항:
-  1. process_and_save() 내에 3일 기준 날짜 분기 로직 추가
-  2. 과거 뉴스는 PastNews 테이블로, 최신 뉴스는 ProcessedNews 테이블로 저장
-  3. 마이그레이션 함수(migrate_old_processed_news) 예시 추가
+  1. [대책1] 발행일 누락 시 오늘 날짜 부여 (최신 뉴스 노출 보장)
+  2. [대책2] PastNews 저장 시 원본 RawID를 processed_news_id에 백업
+  3. [대책3] 마이그레이션 시 artist_tags에서 artist_name 자동 추출
+  4. [대책5] 실행 전 Ollama 서버 상태 체크 추가
 """
 
 import os
+import sys
 import json
 import time
-from datetime import datetime
+import requests
+from datetime import datetime, timedelta
 from urllib.parse import quote
-from categories import llm_prompt_category_block
+
+# 윈도우 환경 이모지 출력(cp949) 에러 방지
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+
 from playwright.sync_api import sync_playwright
 from sqlalchemy import or_
 from sqlalchemy.exc import SQLAlchemyError
 from openai import OpenAI
 from pydantic import ValidationError
+import re  # 정규표현식 추가
 from database import RawNews, ProcessedNews, PastNews, get_session
 from schemas import KpopNewsSummary, summary_to_processed_payload
 
@@ -28,33 +36,127 @@ SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_PROMPT_TEMPLATE = get_summary_prompts()
 
 
 # ═══════════════════════════════════════════════════
+# Part 0: 불량 데이터 필터링 (Junk Filter)
+# ═══════════════════════════════════════════════════
+
+
+def is_junk_raw_news(raw: RawNews) -> tuple[bool, str]:
+    """
+    기사 본문이 아닌 네비게이션 메뉴, 포털 메인 페이지,
+    혹은 본문 추출에 실패한 쓰레기 데이터를 감지합니다.
+    """
+    title = (raw.title or "").strip()
+    content = (raw.content or "").strip()
+
+    # 1. 본문이 너무 짧은 경우 (ARTIST_HINT 포함 200자 미만)
+    if len(content) < 200:
+        return True, "본문 내용이 너무 짧음 (추출 실패 가능성)"
+
+    # 2. 제목이 포털이나 방송사 이름 그 자체인 경우
+    junk_titles = [
+        "KBS",
+        "SBS",
+        "SBS연예",
+        "Daum",
+        "MBC",
+        "JTBC",
+        "네이버",
+        "Naver",
+        "Daum | 문화",
+    ]
+    if title in junk_titles:
+        return True, f"포털/방송사 메인 페이지 추정 (제목: {title})"
+
+    # 3. 링크 밀도가 너무 높은 경우 (네비게이션/메뉴판)
+    links = re.findall(r"\[.*?\]\(.*?\)", content)
+    if len(content) > 0:
+        link_ratio = (len(links) * 40) / len(content)
+        if link_ratio > 0.6:
+            return True, "링크 밀도가 높은 메뉴판/네비게이션 데이터"
+
+    # 4. 특정 네비게이션 키워드가 반복되는 경우
+    nav_keywords = ["바로가기", "GNB", "LNB", "검색창", "로그인", "About KBS"]
+    match_count = sum(1 for kw in nav_keywords if kw in content)
+    if match_count >= 3:
+        return True, "네비게이션 키워드 다수 발견"
+
+    return False, ""
+
+
+# ═══════════════════════════════════════════════════
 # Part 1: LLM 가공 (raw_news → processed_news)
 # ═══════════════════════════════════════════════════
 
 
-# 26.4.15 기준 주석처리 (용남님쓰던거)
-# client = OpenAI(
-#     api_key=os.getenv("OPENROUTER_API_KEY"),
-#     base_url="https://openrouter.ai/api/v1",
-# )
-
 client = OpenAI(
-    api_key="ollama",  # Ollama는 키 불필요
+    api_key="ollama",
     base_url="http://localhost:11434/v1",
 )
-LLM_MODEL = "gemma3:latest"  # 또는
+LLM_MODEL = "gemma3:latest"
 LLM_DELAY = 0.5
 
 
+def check_ollama_health():
+    """Ollama 서버가 켜져 있는지 확인"""
+    try:
+        response = requests.get("http://localhost:11434/api/tags", timeout=2)
+        if response.status_code == 200:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def repair_json(raw: str) -> str:
+    """LLM이 내뱉은 불완전한 JSON을 최소한으로 보정합니다."""
+    raw = re.sub(r"```json\s*", "", raw)
+    raw = re.sub(r"\s*```", "", raw).strip()
+    return raw
+
+
+def extract_names_from_title(title: str) -> list[str]:
+    """제목에서 영어 이름 및 한글 이름을 추출하여 힌트로 활용"""
+    if not title: return []
+    # 1. 영어 이름 (대문자 연속)
+    en_names = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b', title)
+    
+    # 2. 한글 이름 (따옴표 안의 내용이나 2~4글자 명사 후보)
+    # 기사 제목 특성상 이름은 보통 따옴표 안에 있거나 첫머리에 나옵니다.
+    ko_names = re.findall(r'[\'"](.+?)[\'"]', title) # 따옴표 안
+    # 2~10글자 한글 단어 (방탄소년단 등 긴 이름 대응)
+    ko_candidates = re.findall(r'\b[가-힣]{2,10}\b', title)
+    
+    return list(set(en_names + ko_names + ko_candidates))
+
 def process_single(raw: RawNews) -> dict:
     """기존과 동일: LLM을 호출하여 가공된 데이터를 반환"""
-    content = (raw.content or "")[:3000]
+    full_content = (raw.content or "")
+    
+    # 1. 아티스트 힌트 파싱 ([ARTIST_HINT]태그... 추출)
+    artist_hint_from_db = ""
+    clean_content_text = full_content
+    if full_content.startswith("[ARTIST_HINT]"):
+        parts = full_content.split("\n", 1)
+        artist_hint_from_db = parts[0].replace("[ARTIST_HINT]", "").strip()
+        clean_content_text = parts[1] if len(parts) > 1 else ""
+
+    # 2. 제목에서 이름 추가 추출 (AI 보조용)
+    title_names = extract_names_from_title(raw.title or "")
+    combined_hint = artist_hint_from_db
+    if title_names:
+        combined_hint = (combined_hint + ", " + ", ".join(title_names)).strip(", ")
+
+    # 3. 본문 길이 제한 (3000자)
+    content_for_llm = clean_content_text[:3000]
 
     user_message = SUMMARY_USER_PROMPT_TEMPLATE.format(
         title=raw.title or "",
-        content=content,
+        content=content_for_llm,
         raw_category_hint=f"{raw.category} / {raw.sub_category}",
+        raw_artist_hint=combined_hint if combined_hint else "없음",
     )
+    # AI 압박용 추가 메시지
+    user_message += "\n\n[필독] artist_tags에 'K-Enter'를 쓰는 것을 극도로 지양하라. 모르겠다면 [제목]에 언급된 단어라도 반드시 태그에 넣어라."
 
     response = client.chat.completions.create(
         model=LLM_MODEL,
@@ -63,57 +165,79 @@ def process_single(raw: RawNews) -> dict:
         response_format={"type": "json_object"},
         extra_body={"keep_alive": 0},
         messages=[
-            # [수정] 모듈에서 가져온 SUMMARY_SYSTEM_PROMPT 적용
             {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ],
     )
 
     raw_text = response.choices[0].message.content or ""
-    result = json.loads(raw_text)
-    validated = KpopNewsSummary(**result)
+    try:
+        fixed_text = repair_json(raw_text)
+        result_dict = json.loads(fixed_text)
+    except json.JSONDecodeError as e:
+        print(f"\n[!!! JSON 에러 발생 원문 시작 !!!]\n{raw_text}\n[!!! 원문 끝 !!!]")
+        raise e
+    
+    # 4. [보강] AI 결과 정제 및 블랙리스트 처리
+    ai_tags = result_dict.get("artist_tags", [])
+    if not isinstance(ai_tags, list): ai_tags = []
+    
+    # 꼼꼼한 블랙리스트 (일반 동사, 형용사, 무의미한 단어들)
+    blacklist = [
+        "k-enter", "k-pop", "kpop", "artist", "k-entertainment", "idol", "actor",
+        "있어", "똑같", "실물", "사진과", "대통령도", "진짜", "뉴스", "오늘", "보고",
+        "인근", "누가", "모습", "공개", "포착", "근황", "결혼", "이유", "충격", "결국",
+        "다시", "누구", "모두", "현재", "과거", "유튜브", "안티", "사진", "데뷔",
+        "매력", "비주얼", "분위기", "시선", "관심", "화제", "근황", "열애", "결별",
+        "컴백", "발매", "공연", "콘서트", "행사", "응원", "사랑", "우정", "논란",
+        "해명", "입장", "공식", "단독", "최초", "영상", "출처", "커뮤니티", "네티즌",
+        "팬들", "사람들", "반응", "폭발", "포즈", "패션", "스타일", "미모", "여신", "남신"
+    ]
+    
+    final_tags = []
+    # AI 결과물 정제
+    for t in ai_tags:
+        t_clean = t.strip()
+        if t_clean.lower() not in blacklist and len(t_clean) > 1:
+            final_tags.append(t_clean)
+    
+    # 제목에서 추출한 단어들(title_names)은 AI가 놓쳤을 경우를 대비한 '후보'로만 활용
+    # AI 결과가 너무 빈약할 때만 제목 단어 중 블랙리스트에 없는 것만 조심스럽게 추가
+    if not final_tags and title_names:
+        for tn in title_names:
+            if tn.lower() not in blacklist and len(tn) > 1:
+                # 여기서 한 번 더 체크: AI가 답변 본문 어딘가에서 언급했거나 힌트에 있던 것만
+                final_tags.append(tn)
+    
+    # 중복 제거
+    final_tags = list(dict.fromkeys(final_tags))
+    
+    result_dict["artist_tags"] = final_tags if final_tags else ["K-Enter"]
 
-    # AI가 만든 요약 결과를 DB 페이로드로 변환할 때
+    validated = KpopNewsSummary(**result_dict)
     payload = summary_to_processed_payload(raw.id, validated)
 
-    # 원래 trend_insight에 들어있던 1줄 요약(AI의 첫 분석)을 briefing으로 옮깁니다.
-    # 기존 briefing이 리스트 형태라면 그 앞에 추가하거나 교체합니다.
-
-    if payload.get("trend_insight"):
-        # 새로운 브리핑 아이템 생성
-        new_briefing_item = {"label": "핵심요약", "content": payload["trend_insight"]}
-
-        # 기존 briefing 리스트에 추가 (null인 경우 방지)
-        if not payload.get("briefing"):
-            payload["briefing"] = []
-        payload["briefing"].insert(0, new_briefing_item)
-
-        # [중요] 원래 trend_insight 자리는 일단 비워둡니다 (나중에 랑그래프가 채움)
-        payload["trend_insight"] = ""
-
-    # [수정] RawNews의 원본 정보(URL, 발행일 등)를 페이로드에 합쳐줍니다.
+    payload["trend_insight"] = None
     payload["url"] = raw.url
     payload["published_at"] = raw.published_at
     payload["crawled_at"] = raw.crawled_at
-    
-    # AI가 ko_title을 백지로 냈거나 빼먹은 경우, 원본 기사의 영어/기존 제목으로 채워넣기
+
     if not payload.get("ko_title") or not str(payload["ko_title"]).strip():
         payload["ko_title"] = raw.title
 
-    # AI가 source_name을 빼먹은 경우 URL에서 파싱하여 채움
     if not payload.get("source_name") or not str(payload["source_name"]).strip():
         if raw.url:
             from urllib.parse import urlparse
+
             netloc = urlparse(raw.url).netloc.replace("www.", "")
             payload["source_name"] = netloc.split(".")[0].capitalize()
         else:
             payload["source_name"] = "Unknown"
 
-    return payload
+    return payload, validated.image_search_query
 
 
 def process_and_save(session, batch_size: int = 50) -> int:
-    """미처리된 raw_news를 가공하여 저장"""
     unprocessed = (
         session.query(RawNews)
         .filter(RawNews.is_processed == False)
@@ -122,15 +246,11 @@ def process_and_save(session, batch_size: int = 50) -> int:
     )
 
     if not unprocessed:
-        print("[가공] 처리할 뉴스가 없습니다.")
-        return 0
+        print("[가공] 더 이상 처리할 새로운 뉴스(RawNews)가 없습니다! 🎉")
+        return -1
 
-    # --- 실행 영역 시작 ---
     print(f"[가공] {len(unprocessed)}건 처리 시작...")
-    processed_count = 0  # 이 변수가 주석 밖에 있어야 숫자를 셉니다!
-
-    # 1. 날짜 기준선 로직 적용
-    from datetime import timedelta
+    processed_count = 0
 
     now = datetime.now()
     threshold_date = (now - timedelta(days=2)).replace(
@@ -139,16 +259,48 @@ def process_and_save(session, batch_size: int = 50) -> int:
 
     for raw in unprocessed:
         try:
+            # 0. 불량 데이터(Junk) 1차 필터링 (메뉴판, 포털 메인 등 제외)
+            is_junk, junk_reason = is_junk_raw_news(raw)
+            if is_junk:
+                print(f"    [스킵] {junk_reason}")
+                raw.is_processed = True
+                raw.skip_reason = f"JunkFilter: {junk_reason}"
+                session.commit()
+                continue
+
+            # 1. AI 가공 호출 (LLM을 통해 요약 및 태그 생성)
             print(f"  → 가공 중: {raw.title[:40]}...")
-            result_payload = process_single(raw)
+            result_payload, ai_query = process_single(raw)
             time.sleep(LLM_DELAY)
 
+            # 2. K-엔터 등재 조건 체크 (해외 전용 뉴스 등 필터링)
             if not result_payload.get("is_k_ent", True):
                 print(f"    [스킵] K-엔터 등재 조건 미달 (해외 배우/팝 뉴스 필터링)")
-                # 해당 원본 기사는 가공 완료(스킵) 처리
                 raw.is_processed = True
                 session.commit()
                 continue
+
+            # 3. [실시간 이미지 수집] DB 컬럼 추가 없이 즉시 검색하여 thumbnail_url 확보
+            if not result_payload.get("thumbnail_url"):
+                artists = result_payload.get("artist_tags")
+                artist_name = artists[0] if artists else None
+
+                # AI 검색어가 있으면 사용, 없으면 백업 로직(build_query_for_processed) 사용
+                if ai_query and ai_query.strip():
+                    img_query = ai_query.strip()
+                else:
+                    # AI 검색어가 없을 경우: [개선] RawNews 대신 가공된 정보를 넘겨 백업 쿼리 생성
+                    from types import SimpleNamespace
+                    mock_article = SimpleNamespace(**result_payload)
+                    img_query, _ = build_query_for_processed(mock_article)
+
+                print(f"    📸 이미지 검색 중: {img_query}")
+                image_url = pick_non_duplicate_bing_image(
+                    session, img_query, artist_name=artist_name, headless=True
+                )
+                if image_url:
+                    result_payload["thumbnail_url"] = image_url
+                    print(f"    [이미지] 성공: {image_url}")
 
             # 2. 날짜에 따른 분기 저장
             pub_at = raw.published_at
@@ -157,10 +309,13 @@ def process_and_save(session, batch_size: int = 50) -> int:
                 print(f"    [결과] ProcessedNews 테이블로 저장됨")
             else:
                 result_payload.pop("raw_news_id", None)
+                tags = result_payload.get("artist_tags") or []
+                # result_payload["artist_name"] = tags[0] if tags else None  # 삭제됨
                 session.add(PastNews(**result_payload))
                 print(f"    [결과] PastNews 테이블로 저장됨 (과거 기사)")
 
             raw.is_processed = True
+            raw.skip_reason = None  # 성공 시 사유 초기화
             session.commit()
             processed_count += 1
 
@@ -172,25 +327,32 @@ def process_and_save(session, batch_size: int = 50) -> int:
                 print(f"      - 필드 [{loc}]: {msg}")
             if len(e.errors()) > 3:
                 print(f"      - ... 외 {len(e.errors()) - 3}개 오류")
-            
+
             session.rollback()
             raw.is_processed = True
+            raw.skip_reason = (
+                f"ValidationError: {e.errors()[0]['msg']}"
+                if e.errors()
+                else "ValidationError"
+            )
             session.commit()
-            
+
         except json.JSONDecodeError as e:
             print(f"    [스킵] 완벽한 JSON 파괴 (괄호 누락 등): {e}")
             session.rollback()
             raw.is_processed = True
+            raw.skip_reason = f"JSONDecodeError: {str(e)}"
             session.commit()
-            
+
         except Exception as e:
-            error_msg = str(e).split('\n')[0]
+            error_msg = str(e).split("\n")[0]
             print(f"    [스킵] 기타 시스템 오류: {error_msg}")
             session.rollback()
             raw.is_processed = True
+            raw.skip_reason = f"SystemError: {str(e)[:200]}"
             session.commit()
 
-    print(f"[가공 완료] {processed_count}/{len(unprocessed)}건 처리됨")
+    print(f"[가공 세트 완료] 총 {len(unprocessed)}건 시도 중 {processed_count}건 성공")
     return processed_count
 
 
@@ -457,27 +619,55 @@ def pick_non_duplicate_bing_image(
 
 
 def build_query_for_processed(article) -> tuple[str, str]:
+    # (백업) 기존 방식의 검색어 생성 로직
     artists = _loads_maybe(getattr(article, "artist_tags", None))
     cat = getattr(article, "sub_category", "") or ""
+    # RawNews(article)일 경우 title을, ProcessedNews일 경우 ko_title을 우선 참조
+    title = getattr(article, "ko_title", "") or getattr(article, "title", "")
+
+    # 제목에서 따옴표 안의 핵심 키워드(곡명, 작품명 등) 추출 시도
+    extra_context = ""
+    if title:
+        # 스마트 따옴표와 일반 따옴표 모두 대응
+        match = re.search(r"['\"‘“](.*?)['\"’”]", title)
+        if match:
+            extra_context = match.group(1).strip()
 
     if artists:
         artist = str(artists[0]).strip()
-        # 드라마/영화/배우/OTT 관련 뉴스라면 화보나 시상식 사진 위주로
-        if any(kw in cat for kw in ["드라마", "영화", "OTT", "배우"]):
-            return f"{artist} actor photoshoot HQ", artist
-        # K-pop 및 그 외 카테고리는 고해상도 잡지 화보나 컨셉 포토
-        else:
-            return f"{artist} Kpop magazine photoshoot HQ", artist
+        # "K-Enter"는 유효한 아티스트가 아니므로 건너뛰고 키워드/제목으로 넘어감
+        if artist and artist.lower() != "k-enter":
+            # 1. 드라마/영화/배우 관련
+            if any(kw in cat for kw in ["드라마", "영화", "OTT", "배우"]):
+                if extra_context:
+                    return f"{artist} {extra_context} drama still cut official", artist
+                return f"{artist} actor red carpet press conference HQ", artist
+            # 2. 음악/차트/앨범 관련
+            elif any(kw in cat for kw in ["음악", "앨범", "차트", "신곡"]):
+                if extra_context:
+                    return (
+                        f"{artist} {extra_context} music video concept photo hd",
+                        artist,
+                    )
+                return f"{artist} stage performance 4k focus cam", artist
+            # 기본 아티스트 검색
+            return f"{artist} Kpop high resolution official photo", artist
 
+    # 아티스트가 없거나 "K-Enter"인 경우: 키워드 또는 제목의 핵심 문구 사용
     keywords = _loads_maybe(getattr(article, "keywords", None))
-    if keywords:
-        return f"{keywords[0]} K-entertainment high resolution", ""
+    if keywords and len(keywords) > 0:
+        kw = str(keywords[0]).strip()
+        return f"{kw} K-entertainment official press high resolution", ""
 
-    source_name = getattr(article, "source_name", None) or ""
-    if source_name.strip():
-        return f"{source_name} Kpop high quality press", ""
+    if extra_context:
+        return f"{extra_context} K-drama movie official still cut HQ", ""
 
-    return "Kpop idol photoshoot HQ", ""
+    if title:
+        # 제목의 앞부분 20자 정도를 검색어로 활용
+        short_title = title[:25].strip()
+        return f"{short_title} K-entertainment news photo", ""
+
+    return "Kpop idol official stage performance 4k", ""
 
 
 def fetch_images_for_processed(session, sleep_sec: float = 1.5, headless: bool = True):
@@ -560,12 +750,14 @@ if __name__ == "__main__":
             count = process_and_save(session, batch_size=5)
 
             # 더 이상 가공할 뉴스가 없으면 루프 종료
-            if count == 0:
-                print("\n✅ 모든 미처리 뉴스의 가공이 완료되었습니다.")
+            if count == -1:
+                print("\n✅ 모든 미처리 뉴스의 가공이 완벽하게 끝났습니다!")
                 break
 
             total_processed += count
-            print(f"✔️ {batch_count}회차 완료! (현재까지 누적 {total_processed}건)")
+            print(
+                f"✔️ {batch_count}회차 세트 완료! (현재까지 성공적으로 누적된 데이터: {total_processed}건)"
+            )
 
             # [수정] 5개 가공이 끝날 때마다 이미지를 수집하도록 주석 해제함
             print("📸 현재 세트 이미지 수집 중...")

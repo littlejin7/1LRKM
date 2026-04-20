@@ -1,0 +1,87 @@
+[2026-04-20 00:01:17] --- [태그 수정 테스트 시작: 10건] ---
+[2026-04-20 00:01:17] ID=8 가공 중... (서연수, 유연석 ‘판타롱런’ 9-10)
+[2026-04-20 00:01:36]   변경: ["K-Enter"] -> ['Phantom Lawyer', 'Esom', 'Yoo Yeon Seok']
+[2026-04-20 00:01:36]   성공적으로 업데이트됨!
+[2026-04-20 00:01:36] ID=10 가공 중... (파크 은빈, 차은우 주연 ‘더 원더풀)
+[2026-04-20 00:02:06]   변경: ["K-Enter"] -> ['K-Enter']
+[2026-04-20 00:02:06]   성공적으로 업데이트됨!
+[2026-04-20 00:02:06] ID=11 가공 중... (유 연석, ‘phantom lawye)
+[2026-04-20 00:02:31]   변경: ["Phantom Lawyer", "Yoo Yeon Seok", "Shin I Rang", "Han Na Hyun", "Esom"] -> ['Phantom Lawyer', 'Yoo Yeon Seok', 'Shin I Rang', 'Han Na Hyun', 'Esom']
+[2026-04-20 00:02:31]   성공적으로 업데이트됨!
+[2026-04-20 00:02:31] ID=13 가공 중... (‘The Practical Guide)
+[2026-04-20 00:02:45]   변경: ["K-Enter"] -> ['K-Enter']
+[2026-04-20 00:02:45]   성공적으로 업데이트됨!
+[2026-04-20 00:02:45] ID=15 가공 중... (KickFlip, ‘Music Ban)
+[2026-04-20 00:02:53]   에러 발생: Unterminated string starting at: line 9 column 43 (char 420)
+[2026-04-20 00:02:53] ID=16 가공 중... (리임 수정, ‘매드 콘크리트 드림즈’)
+[2026-04-20 00:05:15]   변경: ["K-Enter"] -> ['K-Enter']
+[2026-04-20 00:05:15]   성공적으로 업데이트됨!
+[2026-04-20 00:05:15] ID=18 가공 중... (배두나, 로몬 등 ‘패밀리 메터스 2)
+[2026-04-20 00:05:34]   변경: ["K-Enter"] -> ['Family Matters', 'Bae Doona', 'Lomon', 'Park Byung Eun']
+[2026-04-20 00:05:34]   성공적으로 업데이트됨!
+[2026-04-20 00:05:34] ID=19 가공 중... (Byeon Woo Seok, ‘Per)
+[2026-04-20 00:05:53]   변경: ["K-Enter"] -> ['K-Enter']
+[2026-04-20 00:05:53]   성공적으로 업데이트됨!
+[2026-04-20 00:05:53] ID=21 가공 중... (시그널 시즌 2, tvn 여름 프로그)
+[2026-04-20 00:06:12]   변경: ["K-Enter"] -> ['K-Enter']
+[2026-04-20 00:06:12]   성공적으로 업데이트됨!
+[2026-04-20 00:06:12] ID=22 가공 중... (REVOLVE, 정소미를 글로벌 브랜)
+[2026-04-20 00:06:29]   변경: ["K-Enter"] -> ['K-Enter']
+[2026-04-20 00:06:29]   성공적으로 업데이트됨!
+[2026-04-20 00:14:54] --- [전체 아티스트 태그 정밀 수정 시작] ---
+[2026-04-20 00:14:54] 총 269건의 태그 수정을 시작합니다.
+[2026-04-20 00:15:36]   에러 발생 ID=15: Unterminated string starting at: line 8 column 50 (char 421)
+[2026-04-20 00:16:56]   에러 발생 ID=24: 1 validation error for KpopNewsSummary
+importance
+  Field required [type=missing, input_value={'sub_category': '음악/...': [], 'summary_en': []}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+[2026-04-20 00:17:45] 진행 중: 10/269건 수정 완료
+[2026-04-20 00:20:00]   에러 발생 ID=36: 1 validation error for KpopNewsSummary
+importance
+  Field required [type=missing, input_value={'sub_category': '음악/...': [], 'summary_en': []}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+[2026-04-20 00:20:02]   에러 발생 ID=37: 1 validation error for KpopNewsSummary
+importance
+  Field required [type=missing, input_value={'sub_category': '음악/...': [], 'summary_en': []}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+[2026-04-20 00:20:04]   에러 발생 ID=38: 1 validation error for KpopNewsSummary
+importance
+  Field required [type=missing, input_value={'sub_category': '음악/...': [], 'summary_en': []}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+[2026-04-20 00:20:34] 진행 중: 20/269건 수정 완료
+[2026-04-20 00:21:26]   에러 발생 ID=44: 1 validation error for KpopNewsSummary
+importance
+  Field required [type=missing, input_value={'sub_category': '음악/...': [], 'summary_en': []}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+[2026-04-20 00:22:22]   에러 발생 ID=48: Unterminated string starting at: line 11 column 64 (char 853)
+[2026-04-20 00:23:31] 진행 중: 30/269건 수정 완료
+[2026-04-20 00:23:48]   에러 발생 ID=53: 1 validation error for KpopNewsSummary
+summary_en.3.content
+  Field required [type=missing, input_value={'label': 'Opponent”, '}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+[2026-04-20 00:24:40]   에러 발생 ID=58: Expecting ',' delimiter: line 5 column 98 (char 407)
+[2026-04-20 00:26:31] 진행 중: 40/269건 수정 완료
+[2026-04-20 00:28:50]   에러 발생 ID=74: 1 validation error for KpopNewsSummary
+importance
+  Field required [type=missing, input_value={'sub_category': '음악/...': [], 'summary_en': []}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+[2026-04-20 00:29:26] 진행 중: 50/269건 수정 완료
+[2026-04-20 00:31:58] 진행 중: 60/269건 수정 완료
+[2026-04-20 00:34:38] 진행 중: 70/269건 수정 완료
+[2026-04-20 00:37:30] 진행 중: 80/269건 수정 완료
+[2026-04-20 00:37:42]   에러 발생 ID=107: Unterminated string starting at: line 14 column 43 (char 1055)
+[2026-04-20 00:39:15]   에러 발생 ID=113: Unterminated string starting at: line 19 column 15 (char 1182)
+[2026-04-20 00:40:36] 진행 중: 90/269건 수정 완료
+[2026-04-20 00:41:24]   에러 발생 ID=122: 1 validation error for KpopNewsSummary
+importance
+  Field required [type=missing, input_value={'sub_category': '음악/...': [], 'summary_en': []}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+[2026-04-20 00:41:57]   에러 발생 ID=125: 1 validation error for KpopNewsSummary
+importance
+  Field required [type=missing, input_value={'sub_category': '음악/...': [], 'summary_en': []}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+[2026-04-20 00:41:59]   에러 발생 ID=126: 1 validation error for KpopNewsSummary
+importance
+  Field required [type=missing, input_value={'sub_category': '음악/...': [], 'summary_en': []}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+[2026-04-20 00:43:02] --- [최종 완료] 총 99건의 태그가 수정되었습니다. ---
