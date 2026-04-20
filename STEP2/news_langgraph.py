@@ -4,7 +4,7 @@ from langgraph.graph import StateGraph, END
 import ollama
 
 from database import SessionLocal, ProcessedNews
-from vectorstore import get_stores
+from STEP2.vectorstore import get_stores
 
 # ===================== CONFIG =====================
 OLLAMA_MODEL = "gemma4:latest"

@@ -1,15 +1,14 @@
-
-
+import sys
 import sqlite3
 import json
-import streamlit as st
-from rag_search import build_graph, NewsState
-from database import SessionLocal, ProcessedNews
-import sys
 from pathlib import Path
+import streamlit as st
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# 모듈 경로 설정 (루트 폴더 c:\oLRKM 추가)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+from STEP2.rag_search import build_graph, NewsState
+from database import SessionLocal, ProcessedNews
 from components.styles import apply_styles
 
 apply_styles()
@@ -211,85 +210,65 @@ def parse_json(val):
 
 # ── DB에서 바로 읽어오기 ──
 def load_from_db():
-    from vectorstore import get_stores
+    from STEP2.vectorstore import get_stores
 
     conn = sqlite3.connect("k_enter_news.db")
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    category_limits = {
-        "컨텐츠 & 작품": 5,
-        "인물 & 아티스트": 3,
-        "비즈니스 & 행사": 2,
-    }
-
-    # 중복 방지를 위해 넉넉하게 가져옴
-    temp_rows = []
-    for category, limit in category_limits.items():
-        cursor.execute(
-            """
-            SELECT p.id, p.raw_news_id, p.category, p.sub_category,
-                p.summary, p.summary_en, p.keywords, p.artist_tags,
-                p.sentiment, p.importance, p.importance_reason,
-                p.trend_insight, p.timeline, p.source_name,
-                p.url, p.published_at, p.ko_title, p.thumbnail_url
-            FROM processed_news p
-            WHERE p.importance IS NOT NULL
-            AND p.category = ?
-            ORDER BY p.importance DESC, p.id DESC
-            LIMIT 20
-        """,
-            (category,),
-        )
-        temp_rows.extend(cursor.fetchall())
-
-    # 중요도 순으로 정렬
-    temp_rows = sorted(temp_rows, key=lambda x: x["importance"], reverse=True)
+    # 중요도 순으로 Top 10 추출 (카테고리 구분 없이)
+    cursor.execute(
+        """
+        SELECT p.id, p.raw_news_id, p.category, p.sub_category,
+            p.summary, p.summary_en, p.keywords, p.artist_tags,
+            p.sentiment, p.importance, p.importance_reason,
+            p.trend_insight, p.timeline, p.source_name,
+            p.url, p.published_at, p.ko_title, p.thumbnail_url
+        FROM processed_news p
+        WHERE p.importance IS NOT NULL
+        ORDER BY p.importance DESC, p.id DESC
+        LIMIT 20
+    """
+    )
+    temp_rows = cursor.fetchall()
     conn.close()
 
     top_news_list = []
     seen_artists = set()
-    
-    # 카테고리별로 현재 몇 개 뽑았는지 카운트
-    cat_counts = {cat: 0 for cat in category_limits.keys()}
 
     for row in temp_rows:
-        cat = row["category"]
-        if cat_counts[cat] >= category_limits.get(cat, 0):
-            continue
-            
         tags = parse_json(row["artist_tags"])
-        artist = tags[0].strip().lower() if tags else None
         
-        # 중복 아티스트 체크 (이름이 있거나 K-Enter가 아닐 때만)
-        if artist and artist != "k-enter":
-            if artist in seen_artists:
-                continue
-            seen_artists.add(artist)
+        # # 중복 아티스트 체크 (비활성화됨)
+        # artist = tags[0].strip().lower() if tags else None
+        # if artist and artist != "k-enter":
+        #     if artist in seen_artists:
+        #         continue
+        #     seen_artists.add(artist)
 
         # 뉴스 리스트에 추가
-        top_news_list.append({
-            "id": row["id"],
-            "title": row["ko_title"] or "",
-            "summary": parse_json(row["summary"]),
-            "summary_en": parse_json(row["summary_en"]),
-            "keywords": parse_json(row["keywords"]),
-            "artist_tags": tags,
-            "importance": row["importance"],
-            "importance_reason": row["importance_reason"] or "",
-            "sub_category": row["sub_category"] or "",
-            "category": cat,
-            "sentiment": row["sentiment"] or "neutral",
-            "trend_insight": row["trend_insight"] or "",
-            "source_name": row["source_name"] or "",
-            "published_at": str(row["published_at"]) if row["published_at"] else "",
-            "timeline": parse_json(row["timeline"]),
-            "thumbnail_url": row["thumbnail_url"] or "",
-        })
-        cat_counts[cat] += 1
-        
-        # 총 10개 차면 중단 (혹시 모르니)
-        if len(top_news_list) >= sum(category_limits.values()):
+        top_news_list.append(
+            {
+                "id": row["id"],
+                "title": row["ko_title"] or "",
+                "summary": parse_json(row["summary"]),
+                "summary_en": parse_json(row["summary_en"]),
+                "keywords": parse_json(row["keywords"]),
+                "artist_tags": tags,
+                "importance": row["importance"],
+                "importance_reason": row["importance_reason"] or "",
+                "sub_category": row["sub_category"] or "",
+                "category": row["category"] or "기타",
+                "sentiment": row["sentiment"] or "neutral",
+                "trend_insight": row["trend_insight"] or "",
+                "source_name": row["source_name"] or "",
+                "published_at": str(row["published_at"]) if row["published_at"] else "",
+                "timeline": parse_json(row["timeline"]),
+                "thumbnail_url": row["thumbnail_url"] or "",
+            }
+        )
+
+        if len(top_news_list) >= 10:
             break
 
     # ChromaDB에서 관련 과거뉴스 검색
@@ -317,7 +296,7 @@ def load_from_db():
 
 
 # ── 파이프라인 실행 (캐시) ──
-@st.cache_resource(show_spinner="🔄 뉴스 파이프라인 실행 중...")
+# @st.cache_resource(show_spinner="🔄 뉴스 파이프라인 실행 중...")
 def run_pipeline():
     # trend_insight 이미 저장돼 있으면 파이프라인 스킵
     session = SessionLocal()
@@ -366,7 +345,7 @@ def score_class(pct: int) -> str:
 def main():
     # ✅ 뒤로가기 버튼 추가
     if st.button("← 대시보드로 돌아가기"):
-        st.switch_page("app.py")
+        st.switch_page("run.py")
 
     st.markdown("## 📰 K-엔터 뉴스 브리핑")
     st.markdown("<hr class='divider'>", unsafe_allow_html=True)
@@ -379,18 +358,18 @@ def main():
         st.error("뉴스 데이터가 없습니다.")
         return
 
-## 1개만 표시 되게
+    ## 1개만 표시 되게
     idx = 0
     if "detail_id" in st.session_state:
-     target_id = st.session_state["detail_id"]
-     for j, news_item in enumerate(top_news_list):
+        target_id = st.session_state["detail_id"]
+        for j, news_item in enumerate(top_news_list):
             if news_item["id"] == target_id:
-              idx = j
-              break
+                idx = j
+                break
 
     news = top_news_list[idx]
 
-## 맘에 안들면 삭제 ## 이전 다음 버튼
+    ## 맘에 안들면 삭제 ## 이전 다음 버튼
 
     col1, col2, col3 = st.columns([1, 4, 1])
     with col1:
@@ -399,7 +378,10 @@ def main():
                 st.session_state["detail_id"] = top_news_list[idx - 1]["id"]
                 st.rerun()
     with col2:
-                st.markdown(f"<div style='text-align:center;font-weight:700;'>{idx+1}위 / {len(top_news_list)}위</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='text-align:center;font-weight:700;'>{idx+1}위 / {len(top_news_list)}위</div>",
+            unsafe_allow_html=True,
+        )
     with col3:
         if idx < len(top_news_list) - 1:
             if st.button("다음 ▶"):
@@ -507,7 +489,7 @@ def main():
             </div>
             <div class='timeline-wrap'>"""
         for i, item in enumerate(timeline):
-            is_last = (i == 0)
+            is_last = i == 0
 
             sentiment = item.get("sentiment", "neutral")
 

@@ -4,12 +4,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from typing import TypedDict, List, Dict, Any
 from langgraph.graph import StateGraph, END
-from tts import text_to_speech, TTS_OUTPUT_PATH
+from STEP2.tts import text_to_speech, TTS_OUTPUT_PATH
 import ollama
 import json
 
 from database import SessionLocal, ProcessedNews
-from vectorstore import get_stores
+from STEP2.vectorstore import get_stores
 
 # ===================== CONFIG =====================
 OLLAMA_MODEL = "gemma3:latest"

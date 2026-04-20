@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import streamlit as st
 from components.styles import apply_styles
-from components.sidebar import render_sidebar
+# from components.sidebar import render_sidebar
 from components.main_page import render_dashboard
 
 DB_PATH = Path("k_enter_news.db")
@@ -24,7 +24,18 @@ st.set_page_config(
     page_title="K-ENT Now",
     page_icon="🎵",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
+)
+
+# 사이드바 제거 CSS
+st.markdown(
+    """
+<style>
+[data-testid="stSidebar"] { display: none !important; }
+[data-testid="collapsedControl"] { display: none !important; }
+</style>
+""",
+    unsafe_allow_html=True,
 )
 
 apply_styles()
@@ -137,8 +148,12 @@ def main():
     processed = load_processed()
     past = load_past()
 
-    # 사이드바 → keyword, 대분류, 중분류, 감성필터, 자동새로고침
-    keyword, category, sub_category, sentiments, auto_refresh = render_sidebar()
+    # 사이드바 없이 기본값 설정
+    keyword = ""
+    category = "전체"
+    sub_category = "전체"
+    sentiments = ["긍정", "부정", "중립"]
+    # auto_refresh = False
 
     # 대시보드 렌더링
     render_dashboard(processed, past, keyword, category, sub_category, sentiments)
