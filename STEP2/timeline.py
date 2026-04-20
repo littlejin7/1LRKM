@@ -25,9 +25,9 @@ NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
 NAVER_NEWS_URL = "https://openapi.naver.com/v1/search/news.json"
 
 category_limits = {
-    "컨텐츠 & 작품": 5,
-    "인물 & 아티스트": 3,
-    "비즈니스 & 행사": 2,
+    "컨텐츠 & 작품": 4,
+    "인물 & 아티스트": 4,
+    "비즈니스 & 행사": 4,
 }
 # ==================================================
 
@@ -106,7 +106,7 @@ def generate_timeline(title: str, artist_tags: list, keywords: list, news_items:
     timeline = []
     seen_dates = set() 
 
-    for item in news_items[:6]:
+    for item in news_items[:15]:
         pub_date = item.get("pubDate", "")
         try:
             date_obj = datetime.strptime(pub_date[:16], "%a, %d %b %Y")
@@ -197,7 +197,7 @@ def main():
         query = " ".join(artists[:2] + keywords[:3])  # 너무 길면 검색 품질 저하
 
         print(f"  🔍 네이버 검색 쿼리: {query}")
-        news_items = search_naver_news(query, display=10)
+        news_items = search_naver_news(query, display=30)
         print(f"  📰 검색 결과: {len(news_items)}건")
 
         if not news_items:

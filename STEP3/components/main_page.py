@@ -1,9 +1,7 @@
-
-
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import asyncio
 import io
@@ -14,6 +12,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 import base64
+
 # -- 보고서
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -56,16 +55,20 @@ def tts_to_bytes(text: str) -> bytes:
 
 
 def _safe_tags(val) -> list:
-    if not val: return []
-    if isinstance(val, list): return val
+    if not val:
+        return []
+    if isinstance(val, list):
+        return val
     if isinstance(val, str):
         try:
             import json
+
             parsed = json.loads(val)
             return parsed if isinstance(parsed, list) else [str(parsed)]
         except:
             return [val]
     return [str(val)]
+
 
 def _thumb_html(url: str, featured: bool = False) -> str:
     cls = "featured-thumb" if featured else "news-thumb"
@@ -135,9 +138,11 @@ def get_base64_image(image_path):
         data = f.read()
     return base64.b64encode(data).decode()
 
+
 def render_header():
     img_base64 = get_base64_image(TITLE_IMG)
-    st.markdown(f"""
+    st.markdown(
+        f"""
         <style>
             header[data-testid="stHeader"] {{
                 display: none;
@@ -167,7 +172,10 @@ def render_header():
         <div class="custom-header">
             <img src="data:image/png;base64,{img_base64}" alt="header logo">
         </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
+
 
 # ── 보고서 PDF 생성 ───────────────────────────────────────────────────────────
 def generate_report_pdf(filtered: list) -> bytes:
@@ -194,7 +202,11 @@ def generate_report_pdf(filtered: list) -> bytes:
         summary = item.get("summary", "")
         if isinstance(summary, list) and summary:
             first = summary[0]
-            summary_text = first.get("content", str(first)) if isinstance(first, dict) else str(first)
+            summary_text = (
+                first.get("content", str(first))
+                if isinstance(first, dict)
+                else str(first)
+            )
         else:
             summary_text = str(summary or "")
 
@@ -264,7 +276,9 @@ def render_ranking(filtered: list):
 
     title_col, report_col, btn_col = st.columns([3, 1, 1])
     with title_col:
-        st.markdown('<div class="section-title">🏆 오늘의 랭킹</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="section-title">🏆 오늘의 랭킹</div>', unsafe_allow_html=True
+        )
     with report_col:
         pdf_bytes = generate_report_pdf(filtered)  # ✅ filtered 전달
         st.download_button(
@@ -275,7 +289,9 @@ def render_ranking(filtered: list):
             use_container_width=True,
         )
     with btn_col:
-        briefing_click = st.button("🎙️ 오늘의 뉴스 브리핑 듣기", use_container_width=True)
+        briefing_click = st.button(
+            "🎙️ 오늘의 뉴스 브리핑 듣기", use_container_width=True
+        )
 
     featured = filtered[0]
     tags = _safe_tags(featured.get("artist_tags", []))
@@ -285,7 +301,6 @@ def render_ranking(filtered: list):
         summary_text = summary[0].get("content", "")
     else:
         summary_text = str(summary or "")
-
 
     if briefing_click:
         top5 = filtered[:5]
@@ -357,7 +372,6 @@ def render_ranking(filtered: list):
             else:
                 item_summary_text = str(item_summary or "")
 
-
             col = col_a if i % 2 == 0 else col_b
             with col:
                 with st.container(border=True):
@@ -393,7 +407,6 @@ def render_ranking(filtered: list):
                         st.switch_page("pages/dashboard.py")
 
 
-
 # ── 메인 대시보드 ─────────────────────────────────────────────────────────────
 
 
@@ -406,7 +419,7 @@ def render_dashboard(
     sentiments: list[str],
 ):
     render_header()
-    
+
     filtered_processed = [
         x for x in processed if _match(x, keyword, category, sub_category, sentiments)
     ]
@@ -414,9 +427,8 @@ def render_dashboard(
         x for x in past if _match(x, keyword, category, sub_category, sentiments)
     ]
 
-
     # 대시보드의 1~10위(DB 로드) 로직을 그대로 가져옴
-    from pages.dashboard import load_from_db
+    from components.news_pip import load_from_db
 
     dashboard_data = load_from_db()
 

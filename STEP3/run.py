@@ -1,5 +1,5 @@
 """
-run.py — 진입점 (라우팅만 담당)
+run.py ── 진입점 (라우팅만 담당)
 
 실행: streamlit run STEP3/run.py
 """
@@ -61,19 +61,20 @@ def _j(v):
         return []
 
 
+# ── 데이터 로딩 ──
+
+
 @st.cache_data(show_spinner=False)
 def load_processed():
     con = _open()
     cur = con.cursor()
     cur.execute(
         """
-        SELECT
-            p.id, r.title, p.url, p.category, p.summary,
-            p.keywords, p.artist_tags, p.sentiment, p.importance,
-            p.source_name, p.tts_text, p.processed_at, p.thumbnail_url
-        FROM processed_news p
-        JOIN raw_news r ON r.id = p.raw_news_id
-        ORDER BY p.importance DESC, p.id DESC
+        SELECT id, raw_news_id, category, sub_category, ko_title,
+               sentiment, importance, thumbnail_url, artist_tags, keywords, source_name, published_at
+        FROM processed_news
+        WHERE importance IS NOT NULL
+        ORDER BY importance DESC, id DESC
     """
     )
     rows = cur.fetchall()
@@ -81,19 +82,16 @@ def load_processed():
     return [
         {
             "id": r["id"],
-            "title": r["title"] or "",
-            "url": r["url"] or "",
+            "title": r["ko_title"] or "",
             "category": r["category"] or "기타",
-            "sub_category": "",
-            "summary": _j(r["summary"]),
-            "keywords": _j(r["keywords"]),
-            "artist_tags": _j(r["artist_tags"]),
+            "sub_category": r["sub_category"] or "",
             "sentiment": r["sentiment"] or "neutral",
-            "importance": r["importance"] or 0,
-            "source_name": r["source_name"] or "",
-            "tts_text": r["tts_text"] or "",
-            "processed_at": r["processed_at"] or "",
+            "importance": r["importance"],
             "thumbnail_url": r["thumbnail_url"] or "",
+            "artist_tags": _j(r["artist_tags"]),
+            "keywords": _j(r["keywords"]),
+            "source_name": r["source_name"] or "",
+            "published_at": r["published_at"] or "",
         }
         for r in rows
     ]
@@ -103,7 +101,7 @@ def load_processed():
 def load_past():
     con = _open()
     cur = con.cursor()
-    # 1. 쿼리에서는 thumbnail_url을 뺐습니다.
+    # 1. 쿼리에서 thumbnail_url을 뺍니다.
     cur.execute(
         """
         SELECT
@@ -137,7 +135,7 @@ def load_past():
     ]
 
 
-# ── 메인 ─────────────────────────────────────────────────────────────────────
+# ── 메인 실행 ──
 
 
 def main():

@@ -30,7 +30,8 @@ OUTPUT_SCHEMA_BLOCK = r"""
   "importance": 1,
   "importance_reason": "[IP0+사건0+파급0+기본1=1] 근거 한 문장",
   "trend_insight": "",
-  "tts_text": "220자 이내의 라디오 브리핑 대본"
+  "tts_text": "220자 이내의 라디오 브리핑 대본",
+  "image_search_query": "아티스트명 제목 핵심키워드 2026 recent high resolution official photo"
 }
 
 주의사항:

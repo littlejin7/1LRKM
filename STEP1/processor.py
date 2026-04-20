@@ -657,54 +657,54 @@ def build_query_for_processed(article) -> tuple[str, str]:
             # 1. 드라마/영화/배우 관련
             if any(kw in cat for kw in ["드라마", "영화", "OTT", "배우"]):
                 if extra_context:
-                    return f"{artist} {extra_context} drama still cut official", artist
-                return f"{artist} actor red carpet press conference HQ", artist
+                    return f"{artist} {extra_context} 2026 drama still cut official recent", artist
+                return f"{artist} actor 2026 recent press conference HQ", artist
             # 2. 음악/차트/앨범 관련
             elif any(kw in cat for kw in ["음악", "앨범", "차트", "신곡"]):
                 if extra_context:
                     return (
-                        f"{artist} {extra_context} music video concept photo hd",
+                        f"{artist} {extra_context} 2026 music video concept photo recent",
                         artist,
                     )
-                return f"{artist} stage performance 4k focus cam", artist
+                return f"{artist} stage performance 2026 focus cam recent", artist
             # 기본 아티스트 검색
-            return f"{artist} Kpop high resolution official photo", artist
+            return f"{artist} 2026 Kpop recent high resolution official photo", artist
 
     # 아티스트가 없거나 "K-Enter"인 경우: 키워드 또는 제목의 핵심 문구 사용
     keywords = _loads_maybe(getattr(article, "keywords", None))
     if keywords and len(keywords) > 0:
         kw = str(keywords[0]).strip()
-        return f"{kw} K-entertainment official press high resolution", ""
+        return f"{kw} 2026 K-entertainment recent official press HQ", ""
 
     if extra_context:
-        return f"{extra_context} K-drama movie official still cut HQ", ""
+        return f"{extra_context} 2026 K-drama movie recent official still cut HQ", ""
 
     if title:
         # 제목의 앞부분 20자 정도를 검색어로 활용
         short_title = title[:25].strip()
-        return f"{short_title} K-entertainment news photo", ""
+        return f"{short_title} 2026 recent news photo HQ", ""
 
-    return "Kpop idol official stage performance 4k", ""
+    return "Kpop idol 2026 recent stage performance 4k", ""
 
 
-def fetch_images_for_processed(session, sleep_sec: float = 1.5, headless: bool = True):
-    # ProcessedNews 이미지 누락본 수집
-    recent_articles = (
-        session.query(ProcessedNews)
-        .filter(
+def fetch_images_for_processed(session, sleep_sec: float = 1.5, headless: bool = True, overwrite: bool = False):
+    # ProcessedNews 이미지 수집
+    query_recent = session.query(ProcessedNews)
+    if not overwrite:
+        query_recent = query_recent.filter(
             or_(
                 ProcessedNews.thumbnail_url.is_(None), ProcessedNews.thumbnail_url == ""
             )
         )
-        .all()
-    )
+    recent_articles = query_recent.all()
 
-    # PastNews 이미지 누락본 수집
-    past_articles = (
-        session.query(PastNews)
-        .filter(or_(PastNews.thumbnail_url.is_(None), PastNews.thumbnail_url == ""))
-        .all()
-    )
+    # PastNews 이미지 수집
+    query_past = session.query(PastNews)
+    if not overwrite:
+        query_past = query_past.filter(
+            or_(PastNews.thumbnail_url.is_(None), PastNews.thumbnail_url == "")
+        )
+    past_articles = query_past.all()
 
     articles = recent_articles + past_articles
 
