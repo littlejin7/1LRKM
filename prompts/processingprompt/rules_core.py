@@ -26,13 +26,21 @@ RULES_CORE = """
        V→뷔(V) / RM→RM / Lisa→리사 / Rosé→로제
        Jihyo→지효 / Taeyeon→태연 / IU→아이유 / Chaeyoung→채영
 
-2. 이름을 확실히 모르는 경우 → 임의 음역 절대 금지. 로마자 그대로 유지.
+2. [솔로 활동 우선 법칙] 멤버 개인의 소식(솔로 앨범, 개인 소속사 등)일 경우, 그룹 이름보다 **멤버의 이름**을 최우선 artist_tags로 지정하라.
+   예: Jisoo의 개인 활동 기사 → ["Jisoo"] (BLACKPINK는 2순위로 두거나 제외)
+   예: Donghae의 솔로 앨범 → ["Donghae"] (SUPER JUNIOR는 2순위)
+
+3. [수식어/닉네임 사용 금지] '신인류', '괴물 신인', '천재', 'Teaser' 등 아티스트를 지칭하는 수식어나 일반 명사를 artist_tags에 절대 넣지 마라. 오직 **공식 활동명**만 추출하라.
+
+4. [약어(Acronym) 인식] I.O.I, B.A.P, BTS 등 점(.)이나 대문자로 구성된 그룹명을 일반 텍스트로 오해하지 말고 정확히 아티스트로 식별하라.
+
+5. 이름을 확실히 모르는 경우 → 임의 음역 절대 금지. 로마자 그대로 유지.
    예: "Park Hyejin" → 박혜진으로 추측 변환 금지, Park Hyejin 그대로.
 
-3. artist_tags: 항상 로마자 표기만. (한글 금지)
+6. artist_tags: 항상 로마자 표기만. (한글 금지)
    예: ["BTS", "Jungkook", "BLACKPINK"]
 
-4. ko_title·summary·tts_text: 공식 한국어 이름 알면 한글, 모르면 로마자 유지.
+7. ko_title·summary·tts_text: 공식 한국어 이름 알면 한글, 모르면 로마자 유지.
    절대로 임의 음역 생성 금지.
 
 절대 규칙:

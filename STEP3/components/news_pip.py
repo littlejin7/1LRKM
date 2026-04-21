@@ -74,7 +74,8 @@ def parse_json(val):
 def load_from_db():
     from STEP2.vectorstore import get_stores
 
-    conn = sqlite3.connect("k_enter_news.db")
+    _ROOT = Path(__file__).resolve().parent.parent.parent
+    conn = sqlite3.connect(str(_ROOT / "k_enter_news.db"))
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
@@ -180,7 +181,7 @@ def load_from_db():
     related_news_map = {}
     for i, news in enumerate(final_news_list):
         query_text = news["title"] + " " + " ".join(news["keywords"])
-        results = past_store.similarity_search_with_score(query_text, k=3)
+        results = past_store.similarity_search_with_score(query_text, k=10)
         related_news_map[i] = [
             {
                 "content": doc.page_content,
@@ -205,7 +206,7 @@ def run_pipeline():
     try:
         already_done = (
             session.query(ProcessedNews)
-            .filter(ProcessedNews.trend_insight.isnot(None))
+            .filter(ProcessedNews.importance.isnot(None))
             .count()
         )
     finally:

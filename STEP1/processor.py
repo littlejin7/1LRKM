@@ -10,15 +10,22 @@
 
 import os
 import sys
+import io
 import json
 import time
 import requests
+import re
+from pathlib import Path
 from datetime import datetime, timedelta
 from urllib.parse import quote
+from contextlib import contextmanager
 
-# 윈도우 환경 이모지 출력(cp949) 에러 방지
-if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding="utf-8")
+# 프로젝트 루트 경로 추가
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+# 윈도우 터미널 인코딩 에러 방지
+if sys.stdout.encoding != "utf-8":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 from playwright.sync_api import sync_playwright
 from sqlalchemy import or_
@@ -108,30 +115,58 @@ def check_ollama_health():
 
 
 def repair_json(raw: str) -> str:
-    """LLM이 내뱉은 불완전한 JSON을 최소한으로 보정합니다."""
+    """LLM이 내뱉은 불완전하거나 깨진 JSON을 강력하게 보정합니다."""
+    # 1. 마크다운 코드 블록 제거
     raw = re.sub(r"```json\s*", "", raw)
     raw = re.sub(r"\s*```", "", raw).strip()
+
+    # 2. JSON 내부 문자열 값 내의 이스케이프되지 않은 큰따옴표 처리
+    # (키-값 구조를 유지하면서 값 내부의 따옴표만 찾아 이스케이프)
+    def _escape_internal_quotes(match):
+        key_part = match.group(1)
+        value_part = match.group(2)
+        # 값 내부의 큰따옴표를 \"로 변경 (이미 이스케이프된 것은 제외)
+        fixed_value = re.sub(r'(?<!\\)"', r"\"", value_part)
+        return f'{key_part}"{fixed_value}"'
+
+    # "key": "value" 패턴을 찾아 value 부분만 보정
+    raw = re.sub(r'("[\w_]+"\s*:\s*)"(.*)"(?=\s*[,}])', _escape_internal_quotes, raw)
+
+    # 3. 트레일링 콤마 제거 (JSON 표준 위반 방지)
+    raw = re.sub(r",\s*([\]}])", r"\1", raw)
+
+    # 4. 괄호 쌍 맞추기 (잘린 응답 대응)
+    brace_count = raw.count("{") - raw.count("}")
+    bracket_count = raw.count("[") - raw.count("]")
+
+    if bracket_count > 0:
+        raw += "]" * bracket_count
+    if brace_count > 0:
+        raw += "}" * brace_count
+
     return raw
 
 
 def extract_names_from_title(title: str) -> list[str]:
     """제목에서 영어 이름 및 한글 이름을 추출하여 힌트로 활용"""
-    if not title: return []
+    if not title:
+        return []
     # 1. 영어 이름 (대문자 연속)
-    en_names = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b', title)
-    
+    en_names = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b", title)
+
     # 2. 한글 이름 (따옴표 안의 내용이나 2~4글자 명사 후보)
     # 기사 제목 특성상 이름은 보통 따옴표 안에 있거나 첫머리에 나옵니다.
-    ko_names = re.findall(r'[\'"](.+?)[\'"]', title) # 따옴표 안
+    ko_names = re.findall(r'[\'"](.+?)[\'"]', title)  # 따옴표 안
     # 2~10글자 한글 단어 (방탄소년단 등 긴 이름 대응)
-    ko_candidates = re.findall(r'\b[가-힣]{2,10}\b', title)
-    
+    ko_candidates = re.findall(r"\b[가-힣]{2,10}\b", title)
+
     return list(set(en_names + ko_names + ko_candidates))
+
 
 def process_single(raw: RawNews) -> dict:
     """기존과 동일: LLM을 호출하여 가공된 데이터를 반환"""
-    full_content = (raw.content or "")
-    
+    full_content = raw.content or ""
+
     # 1. 아티스트 힌트 파싱 ([ARTIST_HINT]태그... 추출)
     artist_hint_from_db = ""
     clean_content_text = full_content
@@ -177,24 +212,96 @@ def process_single(raw: RawNews) -> dict:
     except json.JSONDecodeError as e:
         print(f"\n[!!! JSON 에러 발생 원문 시작 !!!]\n{raw_text}\n[!!! 원문 끝 !!!]")
         raise e
-    
+
     # 4. [보강] AI 결과 정제 및 블랙리스트 처리
     ai_tags = result_dict.get("artist_tags", [])
-    if not isinstance(ai_tags, list): ai_tags = []
-    
+    if not isinstance(ai_tags, list):
+        ai_tags = []
+
     # 꼼꼼한 블랙리스트 (일반 동사, 형용사, 무의미한 단어들)
     blacklist = [
-        "k-enter", "k-pop", "kpop", "artist", "k-entertainment", "idol", "actor",
-        "pop", "debut", "music", "official", "video", "lyrics", "comeback", "album",
-        "있어", "똑같", "실물", "사진과", "대통령도", "진짜", "뉴스", "오늘", "보고",
-        "인근", "누가", "모습", "공개", "포착", "근황", "결혼", "이유", "충격", "결국",
-        "다시", "누구", "모두", "현재", "과거", "유튜브", "안티", "사진", "데뷔",
-        "매력", "비주얼", "분위기", "시선", "관심", "화제", "근황", "열애", "결별",
-        "컴백", "발매", "공연", "콘서트", "행사", "응원", "사랑", "우정", "논란",
-        "해명", "입장", "공식", "단독", "최초", "영상", "출처", "커뮤니티", "네티즌",
-        "팬들", "사람들", "반응", "폭발", "포즈", "패션", "스타일", "미모", "여신", "남신"
+        "k-enter",
+        "k-pop",
+        "kpop",
+        "artist",
+        "k-entertainment",
+        "idol",
+        "actor",
+        "pop",
+        "debut",
+        "music",
+        "official",
+        "video",
+        "lyrics",
+        "comeback",
+        "album",
+        "있어",
+        "똑같",
+        "실물",
+        "사진과",
+        "대통령도",
+        "진짜",
+        "뉴스",
+        "오늘",
+        "보고",
+        "인근",
+        "누가",
+        "모습",
+        "공개",
+        "포착",
+        "근황",
+        "결혼",
+        "이유",
+        "충격",
+        "결국",
+        "다시",
+        "누구",
+        "모두",
+        "현재",
+        "과거",
+        "유튜브",
+        "안티",
+        "사진",
+        "데뷔",
+        "매력",
+        "비주얼",
+        "분위기",
+        "시선",
+        "관심",
+        "화제",
+        "근황",
+        "열애",
+        "결별",
+        "컴백",
+        "발매",
+        "공연",
+        "콘서트",
+        "행사",
+        "응원",
+        "사랑",
+        "우정",
+        "논란",
+        "해명",
+        "입장",
+        "공식",
+        "단독",
+        "최초",
+        "영상",
+        "출처",
+        "커뮤니티",
+        "네티즌",
+        "팬들",
+        "사람들",
+        "반응",
+        "폭발",
+        "포즈",
+        "패션",
+        "스타일",
+        "미모",
+        "여신",
+        "남신",
     ]
-    
+
     final_tags = []
     # AI 결과물 정제
     for t in ai_tags:
@@ -205,10 +312,10 @@ def process_single(raw: RawNews) -> dict:
             if b.lower() in t_clean.lower():
                 is_bad = True
                 break
-        
+
         if not is_bad and len(t_clean) > 1:
             final_tags.append(t_clean)
-    
+
     # 제목에서 추출한 단어들(title_names)은 AI가 놓쳤을 경우를 대비한 '후보'로만 활용
     # AI 결과가 너무 빈약할 때만 제목 단어 중 블랙리스트에 없는 것만 조심스럽게 추가
     if not final_tags and title_names:
@@ -220,10 +327,10 @@ def process_single(raw: RawNews) -> dict:
                     break
             if not is_tn_bad and len(tn) > 1:
                 final_tags.append(tn)
-    
+
     # 중복 제거
     final_tags = list(dict.fromkeys(final_tags))
-    
+
     result_dict["artist_tags"] = final_tags if final_tags else ["K-Enter"]
 
     # [수정] source_name이 리스트로 들어올 경우 문자열로 변환 (Pydantic 에러 방지)
@@ -235,6 +342,7 @@ def process_single(raw: RawNews) -> dict:
     payload = summary_to_processed_payload(raw.id, validated)
 
     payload["trend_insight"] = None
+    payload["timeline"] = None
     payload["url"] = raw.url
     payload["published_at"] = raw.published_at
     payload["crawled_at"] = raw.crawled_at
@@ -308,6 +416,7 @@ def process_and_save(session, batch_size: int = 50) -> int:
                 else:
                     # AI 검색어가 없을 경우: [개선] RawNews 대신 가공된 정보를 넘겨 백업 쿼리 생성
                     from types import SimpleNamespace
+
                     mock_article = SimpleNamespace(**result_payload)
                     img_query, _ = build_query_for_processed(mock_article)
 
@@ -635,59 +744,90 @@ def pick_non_duplicate_bing_image(
     return candidates[0]
 
 
+# ── 이미지 검색 금지어 (검색 품질 저하 방지) ──
+BAD_QUERY_KEYWORDS = [
+    "teaser",
+    "drops",
+    "official",
+    "for",
+    "release",
+    "comeback",
+    "new",
+    "anniversary",
+    "video",
+    "photo",
+    "teaser for",
+]
+
+
 def build_query_for_processed(article) -> tuple[str, str]:
-    # (백업) 기존 방식의 검색어 생성 로직
+    """개선된 지능형 이미지 검색어 생성 로직"""
+    # 1. 기초 데이터 확보
     artists = _loads_maybe(getattr(article, "artist_tags", None))
+    keywords = _loads_maybe(getattr(article, "keywords", None))
     cat = getattr(article, "sub_category", "") or ""
-    # RawNews(article)일 경우 title을, ProcessedNews일 경우 ko_title을 우선 참조
     title = getattr(article, "ko_title", "") or getattr(article, "title", "")
 
-    # 제목에서 따옴표 안의 핵심 키워드(곡명, 작품명 등) 추출 시도
-    extra_context = ""
-    if title:
-        # 스마트 따옴표와 일반 따옴표 모두 대응
-        match = re.search(r"['\"‘“](.*?)['\"’”]", title)
-        if match:
-            extra_context = match.group(1).strip()
-
+    # [개선 1] 유효 아티스트 필터링 (수식어 및 무의미한 태그 제거)
+    valid_artists = []
     if artists:
-        artist = str(artists[0]).strip()
-        # "K-Enter"는 유효한 아티스트가 아니므로 건너뛰고 키워드/제목으로 넘어감
-        if artist and artist.lower() != "k-enter":
-            # 1. 드라마/영화/배우 관련
-            if any(kw in cat for kw in ["드라마", "영화", "OTT", "배우"]):
-                if extra_context:
-                    return f"{artist} {extra_context} 2026 drama still cut official recent", artist
-                return f"{artist} actor 2026 recent press conference HQ", artist
-            # 2. 음악/차트/앨범 관련
-            elif any(kw in cat for kw in ["음악", "앨범", "차트", "신곡"]):
-                if extra_context:
-                    return (
-                        f"{artist} {extra_context} 2026 music video concept photo recent",
-                        artist,
-                    )
-                return f"{artist} stage performance 2026 focus cam recent", artist
-            # 기본 아티스트 검색
-            return f"{artist} 2026 Kpop recent high resolution official photo", artist
+        for a in artists:
+            a_str = str(a).strip()
+            if not a_str or a_str.lower() in [
+                "k-enter",
+                "신인류",
+                "괴물 신인",
+                "신인",
+                "컴백",
+            ]:
+                continue
+            valid_artists.append(a_str)
 
-    # 아티스트가 없거나 "K-Enter"인 경우: 키워드 또는 제목의 핵심 문구 사용
-    keywords = _loads_maybe(getattr(article, "keywords", None))
-    if keywords and len(keywords) > 0:
-        kw = str(keywords[0]).strip()
-        return f"{kw} 2026 K-entertainment recent official press HQ", ""
+    # [개선 2] 스마트 따옴표(곡명/작품명) 추출
+    quotes = re.findall(r"['\"‘“](.*?)['\"’”]", title)
+    extra_context = ""
+    for q in quotes:
+        q_clean = q.strip()
+        # 아티스트 이름과 겹치지 않는 가장 긴 따옴표 내용을 곡명으로 채택
+        if q_clean not in valid_artists and len(q_clean) > 1:
+            if q_clean.lower() not in BAD_QUERY_KEYWORDS:
+                extra_context = q_clean
+                break
 
-    if extra_context:
-        return f"{extra_context} 2026 K-drama movie recent official still cut HQ", ""
+    # [개선 3] 검색어 조합 (멤버 + 그룹 전략)
+    query_base = ""
+    if valid_artists:
+        # 상위 2개 아티스트(예: 멤버+그룹)를 조합하여 검색 정확도 극대화
+        query_base = " ".join(valid_artists[:2])
+    elif keywords:
+        # 아티스트가 없으면 유효한 키워드 선택
+        for k in keywords:
+            if str(k).lower() not in BAD_QUERY_KEYWORDS:
+                query_base = str(k)
+                break
 
-    if title:
-        # 제목의 앞부분 20자 정도를 검색어로 활용
-        short_title = title[:25].strip()
-        return f"{short_title} 2026 recent news photo HQ", ""
+    # [개선 4] 최종 쿼리 구성 및 금지어 체크
+    final_query = f"{query_base} {extra_context}".strip()
 
-    return "Kpop idol 2026 recent stage performance 4k", ""
+    # 만약 결과가 너무 짧거나 금지어만 포함된 경우 -> 제목으로 우회
+    if len(final_query) < 2 or any(
+        bad == final_query.lower() for bad in BAD_QUERY_KEYWORDS
+    ):
+        final_query = title[:25].strip()
+
+    # 카테고리별 맞춤 수식어 추가
+    suffix = "2026 recent official photo HQ"
+    if any(kw in cat for kw in ["드라마", "영화", "OTT", "배우"]):
+        suffix = "2026 drama still cut official recent"
+    elif any(kw in cat for kw in ["음악", "앨범", "차트", "신곡"]):
+        suffix = "2026 music video concept photo recent"
+
+    return f"{final_query} {suffix}", (valid_artists[0] if valid_artists else "")
 
 
-def fetch_images_for_processed(session, sleep_sec: float = 1.5, headless: bool = True, overwrite: bool = False):
+def fetch_images_for_processed(
+    session, sleep_sec: float = 1.5, headless: bool = True, overwrite: bool = False
+):
     # ProcessedNews 이미지 수집
     query_recent = session.query(ProcessedNews)
     if not overwrite:
@@ -754,7 +894,10 @@ def fetch_processed_images_only(headless: bool = True):
 
 
 if __name__ == "__main__":
+    print("DEBUG: Entered __main__")
+    print("DEBUG: Connecting to DB...")
     with get_session() as session:
+        print("DEBUG: DB connected. Starting pipeline...")
         print("\n🚀 [뉴스 가공 파이프라인 시작]")
 
         total_processed = 0

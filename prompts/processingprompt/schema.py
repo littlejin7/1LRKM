@@ -19,7 +19,7 @@ OUTPUT_SCHEMA_BLOCK = r"""
     {"label": "...", "content": "..."}
   ],
   "artist_tags": [],
-  "keywords": ["키워드1", "키워드2", "키워드3", "키워드4", "키워드5"],
+  "keywords": ["핵심키워드1", "핵심키워드2", "핵심키워드3", "키워드4", "키워드5"],
   "category": "컨텐츠 & 작품", 
   "sub_category": "드라마/방송",
   "source_name": "",
@@ -35,6 +35,7 @@ OUTPUT_SCHEMA_BLOCK = r"""
 }
 
 주의사항:
+- keywords: 반드시 기사에서 가장 비중이 높고 핵심적인 단어부터 **중요도 순서대로 5개**를 배열하라.
 - summary / summary_en 은 반드시 {"label","content"} 객체 배열이다. 문자열 배열 금지.
 - summary와 summary_en 카드 개수는 반드시 동일.
 """

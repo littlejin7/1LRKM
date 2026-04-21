@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from typing import TypedDict, List, Dict, Any
@@ -13,8 +14,7 @@ from STEP2.vectorstore import get_stores
 
 # ===================== CONFIG =====================
 OLLAMA_MODEL = "gemma3:latest"
-TOP_N = 12
-RELATED_NEWS_COUNT = 3
+
 # ==================================================
 
 # ── 아티스트 이름 정규화 매핑 ──────────────────────────────────────────────────
@@ -42,6 +42,7 @@ ARTIST_MAP = {
     "twice": "트와이스",
 }
 
+
 def normalize_artist(name: str) -> str:
     if not name or not isinstance(name, str):
         return ""
@@ -50,6 +51,7 @@ def normalize_artist(name: str) -> str:
         if k.replace(" ", "") == clean_name:
             return v
     return name.strip()
+
 
 def _parse(val):
     if not val:
@@ -90,12 +92,14 @@ class NewsState(TypedDict):
 
 # ===================== 노드 함수 =====================
 
+
 def fetch_top_news(state: NewsState) -> NewsState:
-    print(" [노드 1] 유연한 4-4-4 뉴스 추출 중...")
+    print(" [노드 1] 뉴스 추출 중...")
 
     import sqlite3 as _sqlite3
 
-    conn = _sqlite3.connect("k_enter_news.db")
+    _ROOT = Path(__file__).resolve().parent.parent
+    conn = _sqlite3.connect(str(_ROOT / "k_enter_news.db"))
     conn.row_factory = _sqlite3.Row
     cursor = conn.cursor()
 
@@ -114,7 +118,7 @@ def fetch_top_news(state: NewsState) -> NewsState:
             " FROM processed_news p"
             " WHERE p.importance IS NOT NULL AND p.category = ?"
             " ORDER BY p.importance DESC, p.id DESC LIMIT ?",
-            (category, limit)
+            (category, limit),
         )
         raw_rows.extend(cursor.fetchall())
     conn.close()
@@ -122,26 +126,26 @@ def fetch_top_news(state: NewsState) -> NewsState:
     seen_artists = set()
     final_news_list = []
     remained_pool = []
-    
+
     for category in category_limits.keys():
         cat_count = 0
         cat_rows = [r for r in raw_rows if r["category"] == category]
-        
+
         for row in cat_rows:
             tags = _parse(row["artist_tags"])
             norm_tags = [normalize_artist(t) for t in tags if isinstance(t, str)]
-            
+
             primary_artist = None
             if norm_tags:
                 for t in norm_tags:
                     if t and t.strip():
                         primary_artist = t.strip()
                         break
-            
+
             is_dup = False
             if primary_artist and primary_artist in seen_artists:
                 is_dup = True
-            
+
             news_obj = {
                 "id": row["id"],
                 "title": row["ko_title"] or "",
@@ -168,7 +172,9 @@ def fetch_top_news(state: NewsState) -> NewsState:
 
     # 10개가 안 채워지면 백업 풀에서 보충
     if len(final_news_list) < 10:
-        remained_pool = sorted(remained_pool, key=lambda x: x["importance"], reverse=True)
+        remained_pool = sorted(
+            remained_pool, key=lambda x: x["importance"], reverse=True
+        )
         for news in remained_pool:
             tags = news.get("artist_tags", [])
             primary_artist = tags[0] if tags else None
@@ -180,10 +186,14 @@ def fetch_top_news(state: NewsState) -> NewsState:
             if len(final_news_list) >= 10:
                 break
 
-    final_news_list = sorted(final_news_list, key=lambda x: (x["importance"], x["id"]), reverse=True)
+    final_news_list = sorted(
+        final_news_list, key=lambda x: (x["importance"], x["id"]), reverse=True
+    )
 
     for i, news in enumerate(final_news_list):
-        print(f"  {i+1}위. [{news['sub_category']}][중요도:{news['importance']}] {news['title']}")
+        print(
+            f"  {i+1}위. [{news['sub_category']}][중요도:{news['importance']}] {news['title']}"
+        )
 
     return {**state, "top_news_list": final_news_list}
 
@@ -198,16 +208,34 @@ def fetch_related_news(state: NewsState) -> NewsState:
 
     for i, news in enumerate(top_news_list):
         query_text = news["title"] + " " + " ".join(news["keywords"])
-        results = past_store.similarity_search_with_score(query_text, k=RELATED_NEWS_COUNT)
+        results = past_store.similarity_search_with_score(query_text, k=10)
         related = [
             {"content": doc.page_content, "metadata": doc.metadata, "score": score}
             for doc, score in results
-            if int((1 - score) * 100) >= 85
-        ]
+            if 30 <= int((1 - score) * 100) <= 75
+        ][:3]
         related_news_map[i] = related
 
-        summary_text = " ".join([item.get("content", "") if isinstance(item, dict) else str(item) for item in news["summary"]]) if news["summary"] else ""
-        related_text = "\n".join([f"- 과거 뉴스 {j+1}: {r['content'][:500]}" for j, r in enumerate(related)]) if related else "관련 과거 뉴스 없음"
+        summary_text = (
+            " ".join(
+                [
+                    item.get("content", "") if isinstance(item, dict) else str(item)
+                    for item in news["summary"]
+                ]
+            )
+            if news["summary"]
+            else ""
+        )
+        related_text = (
+            "\n".join(
+                [
+                    f"- 과거 뉴스 {j+1}: {r['content'][:500]}"
+                    for j, r in enumerate(related)
+                ]
+            )
+            if related
+            else "관련 과거 뉴스 없음"
+        )
 
         prompt = f"""당신은 방대한 데이터를 관통하는 통찰을 한 줄로 요약하는 '수석 전략가'입니다.
 과거의 기록들과 현재의 사건을 연결하여, 지금 이 현상이 산업 전체에 던지는 핵심 메시지를 단 한 문장으로 정의하십시오.
@@ -234,19 +262,22 @@ def fetch_related_news(state: NewsState) -> NewsState:
         summaries_map[i] = summary
         print(f"  {i+1}위 '{news['title'][:30]}' 한줄평 완료")
 
-    session = SessionLocal()
+    import sqlite3 as _sqlite3
+
+    _ROOT = Path(__file__).resolve().parent.parent
+    conn = _sqlite3.connect(str(_ROOT / "k_enter_news.db"))
     try:
         for i, news in enumerate(top_news_list):
-            row = session.query(ProcessedNews).filter(ProcessedNews.id == news["id"]).first()
-            if row:
-                row.trend_insight = summaries_map[i]
-        session.commit()
+            conn.execute(
+                "UPDATE processed_news SET trend_insight = ? WHERE id = ?",
+                (summaries_map[i], news["id"]),
+            )
+        conn.commit()
         print("\n   trend_insight DB 저장 완료")
     except Exception as e:
-        session.rollback()
         print(f"\n   trend_insight DB 저장 실패: {e}")
     finally:
-        session.close()
+        conn.close()
 
     return {"related_news_map": related_news_map, "summaries_map": summaries_map}
 

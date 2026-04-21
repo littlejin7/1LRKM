@@ -27,7 +27,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
 # ── DB 연결 설정 ──
-DATABASE_URL = "sqlite:///k_enter_news.db"
+from pathlib import Path
+_ROOT = Path(__file__).resolve().parent
+DATABASE_URL = f"sqlite:///{_ROOT / 'k_enter_news.db'}"
 
 engine = create_engine(
     DATABASE_URL,

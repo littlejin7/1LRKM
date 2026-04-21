@@ -33,6 +33,9 @@ def render(timeline: list, artist_tags: list):
         if is_last:
             badge_txt += " · 현재"
 
+        url = item.get('url', '')
+        url_html = f"<a href='{url}' target='_blank' style='font-size:0.75rem; color:#1a56db;'>기사 보기 →</a>" if url else ""
+
         timeline_html += f"""
         <div class='timeline-item'>
             <div class='timeline-dot {dot_class}'></div>
@@ -40,6 +43,7 @@ def render(timeline: list, artist_tags: list):
                 <div class='timeline-date'>{item.get('date', '')}</div>
                 <div class='timeline-event'>{item.get('event', '')}</div>
                 <span class='sentiment-badge {badge_cls}'>{badge_txt}</span>
+                {url_html}
             </div>
         </div>"""
 

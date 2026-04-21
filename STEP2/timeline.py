@@ -13,8 +13,111 @@ import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import ollama
-
 from database import SessionLocal, ProcessedNews
+
+# ── 아티스트 이름 정규화 매핑 ──
+ARTIST_MAP = {
+    "babymonster": "베이비몬스터", "baby monster": "베이비몬스터", "베이비 몬스터": "베이비몬스터", "baemon": "베이비몬스터",
+    "blackpink": "블랙핑크", "black pink": "블랙핑크", "블랙 핑크": "블랙핑크",
+    "newjeans": "뉴진스", "new jeans": "뉴진스", "뉴 진스": "뉴진스",
+    "bts": "방탄소년단", "bangtan": "방탄소년단", "방탄": "방탄소년단",
+    "aespa": "에스파", "ive": "아이브", "lesserafim": "르세라핌", "le sserafim": "르세라핌",
+    "straykids": "스트레이 키즈", "stray kids": "스트레이 키즈",
+    "seventeen": "세븐틴", "twice": "트와이스",
+}
+
+def normalize_artist(name: str) -> str:
+    if not name or not isinstance(name, str):
+        return ""
+    clean_name = name.lower().replace(" ", "").strip()
+    for k, v in ARTIST_MAP.items():
+        if k.replace(" ", "") == clean_name:
+            return v
+    return name.strip()
+
+def _parse_json(val):
+    if not val:
+        return []
+    if isinstance(val, list):
+        return val
+    try:
+        # 이중 인코딩 처리
+        result = val
+        for _ in range(3):
+            if isinstance(result, list):
+                return result
+            if isinstance(result, str):
+                result = json.loads(result)
+        return result if isinstance(result, list) else []
+    except:
+        return []
+
+def fetch_top_news():
+    import sqlite3 as _sqlite3
+    _ROOT = Path(__file__).resolve().parent.parent
+    conn = _sqlite3.connect(str(_ROOT / "k_enter_news.db"))
+    conn.row_factory = _sqlite3.Row
+    cursor = conn.cursor()
+
+    cat_limits = {"컨텐츠 & 작품": 30, "인물 & 아티스트": 30, "비즈니스 & 행사": 30}
+    raw_rows = []
+    for category, limit in cat_limits.items():
+        cursor.execute(
+            "SELECT id, category, sub_category, ko_title, artist_tags, keywords, importance "
+            "FROM processed_news WHERE importance IS NOT NULL AND category = ? "
+            "ORDER BY importance DESC, id DESC LIMIT ?",
+            (category, limit)
+        )
+        raw_rows.extend(cursor.fetchall())
+    conn.close()
+    print(f"raw_rows 총 개수: {len(raw_rows)}")
+    for r in raw_rows[:5]:
+        print(f"  id={r['id']} cat={r['category']} imp={r['importance']} artist={r['artist_tags'][:50]}")
+
+    seen_artists = set()
+    final_list = []
+    remained = []
+
+    for category in cat_limits.keys():
+        cat_count = 0
+        cat_rows = [r for r in raw_rows if r["category"] == category]
+        for row in cat_rows:
+            tags = _parse_json(row["artist_tags"])
+            norm_tags = [normalize_artist(t) for t in tags if isinstance(t, str)]
+            primary_artist = next((t for t in norm_tags if t and t.strip()), None)
+            is_dup = primary_artist and primary_artist in seen_artists
+
+            news_obj = {
+                "id": row["id"],
+                "title": row["ko_title"] or "",
+                "artist_tags": norm_tags,
+                "keywords": _parse_json(row["keywords"]),
+                "importance": row["importance"],
+                "category": row["category"] or "",
+                "sub_category": row["sub_category"] or "",
+            }
+
+            if not is_dup and cat_count < 4:
+                if primary_artist:
+                    seen_artists.add(primary_artist)
+                final_list.append(news_obj)
+                cat_count += 1
+            else:
+                remained.append(news_obj)
+
+    if len(final_list) < 10:
+        remained = sorted(remained, key=lambda x: x["importance"], reverse=True)
+        for news in remained:
+            primary_artist = news["artist_tags"][0] if news["artist_tags"] else None
+            if primary_artist and primary_artist in seen_artists:
+                continue
+            if primary_artist:
+                seen_artists.add(primary_artist)
+            final_list.append(news)
+            if len(final_list) >= 10:
+                break
+
+    return sorted(final_list, key=lambda x: x["importance"], reverse=True)
 
 load_dotenv()
 
@@ -23,52 +126,6 @@ OLLAMA_MODEL = "gemma3:latest"
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
 NAVER_NEWS_URL = "https://openapi.naver.com/v1/search/news.json"
-
-category_limits = {
-    "컨텐츠 & 작품": 4,
-    "인물 & 아티스트": 4,
-    "비즈니스 & 행사": 4,
-}
-# ==================================================
-
-
-def fetch_top_news():
-    """카테고리별 Top 10 뉴스 추출"""
-    import sqlite3 as _sqlite3
-
-    conn = _sqlite3.connect("k_enter_news.db")
-    conn.row_factory = _sqlite3.Row
-    cursor = conn.cursor()
-
-    rows = []
-    for category, limit in category_limits.items():
-        cursor.execute(
-            "SELECT id, category, ko_title, artist_tags, keywords, importance"
-            " FROM processed_news"
-            " WHERE importance IS NOT NULL AND category = ?"
-            " ORDER BY importance DESC, id DESC LIMIT ?",
-            (category, limit)
-        )
-        rows.extend(cursor.fetchall())
-
-    conn.close()
-
-    rows = sorted(rows, key=lambda x: (x["importance"], x["id"]), reverse=True)
-
-    top_news_list = []
-    for row in rows:
-        artist_tags = json.loads(row["artist_tags"]) if row["artist_tags"] and isinstance(row["artist_tags"], str) else (row["artist_tags"] or [])
-        keywords = json.loads(row["keywords"]) if row["keywords"] and isinstance(row["keywords"], str) else (row["keywords"] or [])
-        top_news_list.append({
-            "id": row["id"],
-            "title": row["ko_title"] or "",
-            "artist_tags": artist_tags,
-            "keywords": keywords,
-            "importance": row["importance"],
-            "category": row["category"] or "",
-        })
-    return top_news_list
-
 
 def search_naver_news(query: str, display: int = 10) -> list:
     """네이버 뉴스 API로 검색"""
@@ -106,7 +163,7 @@ def generate_timeline(title: str, artist_tags: list, keywords: list, news_items:
     timeline = []
     seen_dates = set() 
 
-    for item in news_items[:15]:
+    for item in news_items[:6]:
         pub_date = item.get("pubDate", "")
         try:
             date_obj = datetime.strptime(pub_date[:16], "%a, %d %b %Y")
@@ -114,8 +171,8 @@ def generate_timeline(title: str, artist_tags: list, keywords: list, news_items:
         except Exception:
             continue
 
-        if not date_str.startswith("2026"):
-            continue
+        #if date_str < "2025-11":
+        #    continue
 
         if date_str in seen_dates:
             continue
@@ -125,7 +182,7 @@ def generate_timeline(title: str, artist_tags: list, keywords: list, news_items:
         news_desc = clean_html(item.get("description", ""))
 
         prompt = f"""
-        다음 뉴스의 핵심 이벤트를 한국어 10자 이내로 요약하고,
+        다음 뉴스의 핵심 이벤트를 한국어 20자 이내로 구체적으로 요약하고,
         감정을 positive, neutral, negative 중 하나로 판단하세요.
 
         반드시 아래 형식으로만 출력하세요:
@@ -162,7 +219,7 @@ def generate_timeline(title: str, artist_tags: list, keywords: list, news_items:
             event = news_title[:10]
             sentiment = "neutral"
 
-        timeline.append({"date": date_str, "event": event,"sentiment": sentiment })
+        timeline.append({"date": date_str, "event": event, "sentiment": sentiment, "url": item.get("originallink", "") or item.get("link", "")})
 
     timeline.sort(key=lambda x: x.get("date", ""), reverse=True)
     return timeline
@@ -170,23 +227,24 @@ def generate_timeline(title: str, artist_tags: list, keywords: list, news_items:
 
 def save_timeline(news_id: int, timeline: list):
     """timeline 컬럼에 저장"""
-    session = SessionLocal()
+    import sqlite3 as _sqlite3
+    _ROOT = Path(__file__).resolve().parent.parent
+    conn = _sqlite3.connect(str(_ROOT / "k_enter_news.db"))
     try:
-        row = session.query(ProcessedNews).filter(ProcessedNews.id == news_id).first()
-        if row:
-            row.timeline = timeline
-        session.commit()
+        conn.execute(
+            "UPDATE processed_news SET timeline = ? WHERE id = ?",
+            (json.dumps(timeline, ensure_ascii=False), news_id)
+        )
+        conn.commit()
     except Exception as e:
-        session.rollback()
-        print(f"  ❌ timeline DB 저장 실패: {e}")
+        print(f"  timeline DB 저장 실패: {e}")
     finally:
-        session.close()
+        conn.close()
 
 def main():
     print("🗓️  타임라인 생성 시작\n" + "="*50)
 
     top_news_list = fetch_top_news()
-    print(f"📰 Top {len(top_news_list)}개 뉴스 추출 완료\n")
 
     for i, news in enumerate(top_news_list):
         print(f"\n{i+1}위. [{news['category']}][중요도:{news['importance']}] {news['title']}")
@@ -194,7 +252,9 @@ def main():
         # artist_tags + keywords 합쳐서 검색 쿼리 구성
         artists = news["artist_tags"] if isinstance(news["artist_tags"], list) else []
         keywords = news["keywords"] if isinstance(news["keywords"], list) else []
-        query = " ".join(artists[:2] + keywords[:3])  # 너무 길면 검색 품질 저하
+        norm_artists = [a for a in artists if a in ARTIST_MAP.values()]
+        query = " ".join(norm_artists[:3] if norm_artists else (artists[:2] + keywords[:3]))
+        #query = " ".join(artists[:3] + keywords[:2])  # 너무 길면 검색 품질 저하
 
         print(f"  🔍 네이버 검색 쿼리: {query}")
         news_items = search_naver_news(query, display=30)

@@ -84,8 +84,8 @@ class ChartData(BaseModel):
 class KpopNewsSummary(BaseModel):
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
-    summary: List[KoreanSummaryCard]
-    summary_en: List[EnglishSummaryCard] = Field(default_factory=list)
+    summary: List[KoreanSummaryCard] = Field(..., min_length=1)
+    summary_en: List[EnglishSummaryCard] = Field(default_factory=list, min_length=1)
     keywords: List[str] = Field(default_factory=list)
     artist_tags: List[str] = Field(default_factory=list)
 
@@ -105,7 +105,7 @@ class KpopNewsSummary(BaseModel):
     rag_sources: Optional[List[str]] = None
     is_rag_used: bool = False
     tts_text: str = ""
-    image_search_query: str = "" # 실시간 이미지 검색용 (DB 저장 안 함)
+    image_search_query: str = ""  # 실시간 이미지 검색용 (DB 저장 안 함)
 
     @model_validator(mode="before")
     @classmethod
@@ -136,14 +136,17 @@ class KpopNewsSummary(BaseModel):
             try:
                 data["importance"] = int(imp)
             except:
-                data["importance"] = 5 # 기본값
+                data["importance"] = 5  # 기본값
 
         # 3. 감성(sentiment) 보정 (이상한 값이 오면 중립으로)
         sent = data.get("sentiment", "중립")
         if sent not in ["긍정", "부정", "중립"]:
-            if "pos" in str(sent).lower() or "good" in str(sent).lower(): data["sentiment"] = "긍정"
-            elif "neg" in str(sent).lower() or "bad" in str(sent).lower(): data["sentiment"] = "부정"
-            else: data["sentiment"] = "중립"
+            if "pos" in str(sent).lower() or "good" in str(sent).lower():
+                data["sentiment"] = "긍정"
+            elif "neg" in str(sent).lower() or "bad" in str(sent).lower():
+                data["sentiment"] = "부정"
+            else:
+                data["sentiment"] = "중립"
 
         return data
 

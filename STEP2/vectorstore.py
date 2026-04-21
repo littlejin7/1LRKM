@@ -20,7 +20,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
 
 EMBED_MODEL = "Snowflake/snowflake-arctic-embed-m"
-CHROMA_DIR = "./chroma_db"
+CHROMA_DIR = str(Path(__file__).resolve().parent.parent / "chroma_db")
 
 
 # ═══════════════════════════════════════════════════
@@ -43,18 +43,18 @@ def get_stores():
     return recent, past
 
 
-# ── summary JSON → 텍스트 변환 헬퍼 ──
-def summary_to_text(summary_raw) -> str:
-    """summary JSON(List[{label, content}]) → 텍스트"""
-    if not summary_raw:
-        return ""
-    try:
-        items = json.loads(summary_raw) if isinstance(summary_raw, str) else summary_raw
-        if isinstance(items, list):
-            return " ".join([item.get("content", "") for item in items if isinstance(item, dict)])
-        return str(items)
-    except Exception:
-        return str(summary_raw)
+# ── summary JSON → 텍스트 변환 헬퍼 ── #summary 컬럼 삭제했으나 혹시
+# def summary_to_text(summary_raw) -> str:
+#     """summary JSON(List[{label, content}]) → 텍스트"""
+#     if not summary_raw:
+#         return ""
+#     try:
+#         items = json.loads(summary_raw) if isinstance(summary_raw, str) else summary_raw
+#         if isinstance(items, list):
+#             return " ".join([item.get("content", "") for item in items if isinstance(item, dict)])
+#         return str(items)
+#     except Exception:
+#         return str(summary_raw)
 
 
 def artists_to_text(artist_tags_raw) -> str:
@@ -83,7 +83,8 @@ def keywords_to_list(keywords_raw) -> list:
 # ═══════════════════════════════════════════════════
 
 def build_and_save():
-    conn = sqlite3.connect("k_enter_news.db")
+    DB_PATH = str(Path(__file__).resolve().parent.parent / "k_enter_news.db")
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
@@ -91,7 +92,7 @@ def build_and_save():
 
     cursor.execute("""
         SELECT p.id, p.raw_news_id, p.category, p.sub_category,
-               p.summary, p.keywords, p.artist_tags, p.sentiment,
+               p.keywords, p.artist_tags, p.sentiment,
                p.importance, p.source_name, p.url, p.processed_at,
                p.published_at, p.language,
                p.ko_title
@@ -100,18 +101,12 @@ def build_and_save():
 
     recent_docs = []
     for row in cursor.fetchall():
-        keywords = keywords_to_list(row["keywords"])
         artists  = artists_to_text(row["artist_tags"])
-        summary  = summary_to_text(row["summary"])
         title    = row["ko_title"] or ""
 
         content = f"""{title}
 
-{summary}
-
-아티스트: {artists}
-키워드: {', '.join(keywords)}
-카테고리: {row["sub_category"] or ""}"""
+아티스트: {artists}"""
 
         doc = Document(
             page_content=content,
@@ -135,7 +130,7 @@ def build_and_save():
 
     cursor.execute("""
         SELECT p.id, p.processed_news_id, p.category, p.sub_category,
-               p.summary, p.keywords, p.artist_tags, p.sentiment,
+               p.keywords, p.artist_tags, p.sentiment,
                p.importance, p.source_name, p.url, p.published_at,
                p.language,
                p.ko_title
@@ -145,13 +140,11 @@ def build_and_save():
     past_docs = []
     for row in cursor.fetchall():
         keywords = keywords_to_list(row["keywords"])
-        summary  = summary_to_text(row["summary"])
         title    = row["ko_title"] or ""
-
+        artists = artists_to_text(row["artist_tags"])
         content = f"""{title}
 
-{summary}
-
+아티스트: {artists}
 키워드: {', '.join(keywords)}"""
 
         doc = Document(

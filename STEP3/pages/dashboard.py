@@ -147,10 +147,9 @@ def main():
         )
         related = [
             r for r in related_map.get(idx, [])
-            if score_to_pct(r["score"]) >= 85
-        ]
+            if 30 <= score_to_pct(r["score"]) <= 75
+        ][:3]
         render_related(related)
-
 
 if __name__ == "__main__":
     main()

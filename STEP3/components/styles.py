@@ -1,13 +1,8 @@
-"""
-styles.py — 수묵화 스타일 공통 CSS
-"""
-
 import streamlit as st
 
 
 def apply_styles():
-    st.markdown(
-        """
+    st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700;900&family=Noto+Sans+KR:wght@400;700;900&display=swap');
 
@@ -32,35 +27,7 @@ html, body, [class*="css"] {
     background-attachment: fixed !important;
     color: #2c1810;
 
-/* ── 사이드바 ────────────────────────────────────── */
-[data-testid="stSidebar"] {
-    background-color: #ede8de;
-    border-right: 1px solid #c9b99a;
-}
-[data-testid="stSidebar"] * { color: #2c1810 !important; }
-[data-testid="stSidebar"] .stTextInput input {
-    background-color: #f5f0e8 !important;
-    border: 1px solid #c9b99a !important;
-    color: #2c1810 !important;
-    border-radius: 20px;
-    padding: 6px 14px;
-}
-[data-testid="stSidebar"] .stSelectbox > div > div {
-    background-color: #f5f0e8 !important;
-    border: 1px solid #c9b99a !important;
-    border-radius: 8px;
-}
-[data-testid="stSidebar"] .stTextInput input {
-    background-color: #f5f0e8 !important;
-    border: 1px solid #c9b99a !important;
-    color: #2c1810 !important;
-    border-radius: 8px;
-}
-[data-testid="stSidebar"] .stTextInput > div > div {
-    background-color: #f5f0e8 !important;
-    border: 1px solid #c9b99a !important;
-    border-radius: 8px;
-}
+
 /* ── 탭 ──────────────────────────────────────────── */
 .stTabs [data-baseweb="tab-list"] {
     background-color: #ede8de;
@@ -309,24 +276,6 @@ img { border-radius: 8px; }
     display: inline-block;
 }
 
-/* 카테고리 버튼 (사이드바) */
-.cat-btn {
-    display: inline-block;
-    background: #f5f0e8;
-    border: 1px solid #c9b99a;
-    border-radius: 20px;
-    padding: 4px 14px;
-    font-size: 13px; font-weight: 700; color: #2c1810;
-    margin: 3px;
-    cursor: pointer;
-    transition: all 0.15s;
-}
-.cat-btn:hover, .cat-btn.active {
-    background: #2c1810;
-    color: #f5f0e8;
-    border-color: #2c1810;
-}
-
 /* 인용구 */
 .quote-text {
     font-size: 13px; color: #8b7355;
@@ -338,6 +287,4 @@ img { border-radius: 8px; }
     margin-top: 16px;
 }
 </style>
-""",
-        unsafe_allow_html=True,
-    )
+""", unsafe_allow_html=True)
