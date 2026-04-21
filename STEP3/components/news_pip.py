@@ -131,6 +131,7 @@ def load_from_db():
                     is_dup = True
             
             news_obj = {
+                "url": row["url"] or "",
                 "id": row["id"],
                 "title": row["ko_title"] or "",
                 "summary": parse_json(row["summary"]),

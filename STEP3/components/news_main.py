@@ -14,8 +14,10 @@ def render(news: dict):
 
     # 요약 공통 헤더
     def render_summary(items: list, label_text: str):
+        url = news.get("url", "")
+        link_html = f'<a href="{url}" target="_blank" style="color:#1a56db; text-decoration:none;">기사 보기 →</a>' if url else ""
         st.markdown(
-            f"<div class='section-label'>{label_text}</div>",
+            f"<div class='section-label'>{label_text} {link_html}</div>",
             unsafe_allow_html=True
         )
         html = ""

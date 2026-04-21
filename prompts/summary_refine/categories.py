@@ -1,11 +1,12 @@
 """허용 sub_category 목록 — 1-1차에서 분류를 손댈 때만 참조.
 
-1-pass `prompts/summary/categories.py`와 동일 소스(`CATEGORY_LIST_BLOCK`)를 써 목록이 어긋나지 않게 한다.
+이 레포는 `prompts/summary` 패키지가 없을 수 있어, 동일한 `CATEGORY_LIST_BLOCK` 소스를
+`prompts/processingprompt/categories.py`에서 재사용한다.
 """
 
 from __future__ import annotations
 
-from ..summary.categories import CATEGORY_LIST_BLOCK
+from ..processingprompt.categories import CATEGORY_LIST_BLOCK
 
 REFINE_SUBCATEGORY_LIST_BLOCK = CATEGORY_LIST_BLOCK
 

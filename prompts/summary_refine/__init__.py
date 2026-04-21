@@ -31,10 +31,25 @@ REFINE_GATE_SHORT = """
 □ summary label: 한글 명사구 2~8자 권장, 쉼표 없음, 콜론 머리말 없음, 영어 라벨 없음
 □ summary_en label: 영어 명사구, "Auto" 없음, 메타 단어·콜론 머리말 없음
 □ summary 카드 수 4~6개, summary_en 카드 수 = summary (7장 이상 입력은 병합해 4~6)
+□ **summary[i].content에 한글(가-힣)이 최소 1글자 이상 포함되는가?** (해외기사라도 summary는 한국어 요약이다. 영어 문단 그대로 두지 마라.)
 □ ko_title: 비어 있지 않음, 한국어, 30자 이내 권장
 □ trend_insight: 기본 "" · 입력 유지 배포만 비어 있지 않은 입력 문자열 유지 · null 금지 ([핵심 계약] 6번과 동일)
 □ tts_text: 한국어 구어체, 220자 이하, null 금지
 □ 입력에 있던 키를 빠뜨리지 않았는가?
+"""
+
+# 배치/랩: Pydantic 검증 실패 시 두 번째 LLM 호출에만 덧붙이는 재시도 지침.
+# (프롬프트만으로 100% 강제하기 어려운 형식 오류를 "한 번 더" 바로잡게 함)
+REFINE_VALIDATION_RETRY_USER_SUFFIX = """
+
+[스키마 재시도] 직전 출력이 검증에 실패했습니다.
+- summary / summary_en 은 각각 **4~6개** 객체 배열이어야 하며 **개수가 서로 같아야** 합니다.
+- summary_en 을 비우지 마라.
+- 해외기사라도 **summary는 한국어 요약**이다. summary[i].content에 **한글이 반드시 포함**되어야 한다(영어 원문 그대로 금지).
+- keywords 는 **정확히 5개**.
+- artist_tags 는 **고유명사만**, 배열을 문자열로 직렬화한 값(예: "["A","B"]") 금지.
+- trend_insight / ko_title / tts_text 등 문자열 필드에 null 금지 (없으면 "").
+반드시 JSON 객체 1개만 출력하라(바깥 텍스트 금지).
 """
 
 SUMMARY_REFINE_SYSTEM_PROMPT = "\n\n".join(

@@ -3,11 +3,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import asyncio
 import io
 from datetime import datetime
 
-import edge_tts
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -32,23 +30,6 @@ SENT_LABEL = {
 TITLE_IMG = Path(__file__).resolve().parent / "assets" / "title.png"
 LOGOS_IMG = Path(__file__).resolve().parent / "assets" / "mag.png"
 
-# ── TTS ──────────────────────────────────────────────────────────────────────
-@st.cache_data(show_spinner=False)
-def tts_to_bytes(text: str) -> bytes:
-    async def _gen():
-        communicate = edge_tts.Communicate(
-            text=text,
-            voice="ko-KR-SunHiNeural",
-            rate="+50%",
-        )
-        buf = io.BytesIO()
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                buf.write(chunk["data"])
-        return buf.getvalue()
-
-    return asyncio.run(_gen())
-
 # ── 유틸 헬퍼 ────────────────────────────────────────────────────────────────
 def _safe_tags(val) -> list:
     if not val: return []
@@ -67,10 +48,14 @@ def _thumb_html(url: str, featured: bool = False) -> str:
     src = url.strip() if url else fallback
     return f'<img class="{cls}" src="{src}" alt="thumbnail" onerror="this.src=\'{fallback}\'" />'
 
+
 def _badge(sentiment: str) -> str:
-    if sentiment in ["positive", "긍정"]: return '<span class="badge-pos">● 긍정</span>'
-    if sentiment in ["negative", "부정"]: return '<span class="badge-neg">● 부정</span>'
+    if sentiment in ["positive", "긍정"]:
+        return '<span class="badge-pos">● 긍정</span>'
+    if sentiment in ["negative", "부정"]:
+        return '<span class="badge-neg">● 부정</span>'
     return '<span class="badge-neu">● 중립</span>'
+
 
 def _cat_badge(item: dict) -> str:
     _, sub = resolve_row_categories(item)
@@ -80,22 +65,29 @@ def _cat_badge(item: dict) -> str:
         f'padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">{sub}</span>'
     )
 
+
 def _change_badge(score: float) -> str:
-    if score >= 0.8: return '<span class="change-up">↑</span>'
-    if score <= 0.3: return '<span class="change-down">↓</span>'
+    if score >= 0.8:
+        return '<span class="change-up">↑</span>'
+    if score <= 0.3:
+        return '<span class="change-down">↓</span>'
     return '<span class="change-same">→</span>'
 
 
 # ── 필터 ─────────────────────────────────────────────────────────────────────
 
+
 def _match(
     item: dict, keyword: str, category: str, sub_category: str, sentiments: list[str]
 ) -> bool:
     item_major, item_sub = resolve_row_categories(item)
-    if category != "전체" and item_major != category: return False
-    if sub_category != "전체" and item_sub != sub_category: return False
+    if category != "전체" and item_major != category:
+        return False
+    if sub_category != "전체" and item_sub != sub_category:
+        return False
     item_sent_ko = SENT_LABEL.get(item.get("sentiment", "neutral"), "중립")
-    if sentiments and item_sent_ko not in sentiments: return False
+    if sentiments and item_sent_ko not in sentiments:
+        return False
     if keyword.strip():
         q = keyword.lower()
         pool = " ".join(
@@ -119,7 +111,8 @@ def get_base64_image(image_path):
 
 def render_header():
     img_base64 = get_base64_image(TITLE_IMG)
-    st.markdown(f"""<style>
+    st.markdown(
+        f"""<style>
             header[data-testid="stHeader"] {{ display: none; }}
             .custom-header {{
                 position: fixed;
@@ -146,7 +139,9 @@ def render_header():
         <div class="custom-header">
             <img src="data:image/png;base64,{img_base64}" alt="header logo">
         </div>
-    """,unsafe_allow_html=True,)
+    """,
+        unsafe_allow_html=True,
+    )
 
 
 # ── 보고서 PDF 생성 ───────────────────────────────────────────────────────────
@@ -174,8 +169,13 @@ def generate_report_pdf(filtered: list) -> bytes:
         summary = item.get("summary", "")
         if isinstance(summary, list) and summary:
             first = summary[0]
-            summary_text = (first.get("content", str(first)) if isinstance(first, dict) else str(first))
-        else: summary_text = str(summary or "")
+            summary_text = (
+                first.get("content", str(first))
+                if isinstance(first, dict)
+                else str(first)
+            )
+        else:
+            summary_text = str(summary or "")
 
         c.setFont("Helvetica-Bold", 12)
         c.drawString(50, y, f"{i}. {title}")
@@ -217,17 +217,22 @@ def render_metrics(processed: list, past: list):
     ]
     for col, (label, val, delta, dcolor) in zip([m1, m2, m3, m4], metrics):
         with col:
-            st.markdown(f"""
+            st.markdown(
+                f"""
                         <div class="metric-card">
                           <div class="metric-label">{label}</div>
                           <div class="metric-value">{val}</div>
                           <div class="metric-delta" style="color:{dcolor}">{delta}</div>
-                        </div>""",unsafe_allow_html=True)
+                        </div>""",
+                unsafe_allow_html=True,
+            )
     st.markdown("<br>", unsafe_allow_html=True)
+
 
 # ── 오늘의 랭킹 ───────────────────────────────────────────────────────────────
 
 def render_ranking(filtered: list):
+    mp3_path = Path(__file__).resolve().parent.parent.parent / "news_report_ko.mp3" 
     if not filtered:
         st.markdown('<div style="color:#8b7355;text-align:center;padding:40px;">조건에 맞는 기사가 없습니다.</div>',unsafe_allow_html=True)
         return
@@ -253,33 +258,22 @@ def render_ranking(filtered: list):
         summary_text = summary[0].get("content", "")
     else:
         summary_text = str(summary or "")
-
+  
     if briefing_click:
-        top5 = filtered[:5]
-        script = "안녕하세요, 오늘의 K엔터 뉴스 브리핑입니다. "
-        for i, item in enumerate(top5, 1):
-            tags = _safe_tags(item.get("artist_tags", []))
-            artist = tags[0] if tags else ""
-            tts_text = item.get("tts_text", "")
-            summary = item.get("summary", "")
-
-            if isinstance(summary, list) and summary and isinstance(summary[0], dict):
-                fallback_txt = summary[0].get("content", "")
-            else:
-                fallback_txt = str(summary or "")
-
-            text = tts_text or fallback_txt
-            script += f"{i}위 뉴스입니다. {artist} {text[:100]} "
-        with st.spinner("음성 생성 중..."):
-            audio = tts_to_bytes(script[:1000])
-            st.audio(audio, format="audio/mp3", autoplay=True)
+        if mp3_path.exists():
+            with open(mp3_path, "rb") as f:
+                audio_bytes = f.read()
+            st.audio(audio_bytes, format="audio/mp3", autoplay=True)
+        else:
+            st.warning("🎙️ 브리핑 파일이 아직 생성되지 않았습니다.")
 
     left, right = st.columns([1, 2])
 
     # ── 1위 featured 카드 ────────────────────────────
     with left:
         with st.container(border=True):
-            st.markdown(f"""<div>
+            st.markdown(
+                f"""<div>
               {_thumb_html(featured.get("thumbnail_url", ""), featured=True)}
               <div class="featured-rank">01</div>
               <div style="margin:8px 0 16px;display:flex;align-items:center;gap:8px;">
@@ -290,20 +284,22 @@ def render_ranking(filtered: list):
               <div class="featured-headline">{artist_name}</div>
               <div class="featured-summary">{summary_text}</div>
            </div>
-            """,unsafe_allow_html=True,)
+            """,
+                unsafe_allow_html=True,
+            )
 
             if st.button("📄 상세보기",key=f"detail_1_{featured['id']}",use_container_width=True,):
                 st.session_state["detail_id"] = featured["id"]
                 st.switch_page("pages/dashboard.py")
-                
+
         logos_b64 = get_base64_image(LOGOS_IMG)
         st.markdown(f"""
+                    <div class="section-title">🌐참조 사이트</div>
                     <div style="margin-top: 12px; padding: 12px 16px;border-radius: 12px;text-align: center;">
                         <img src="data:image/png;base64,{logos_b64}"
                              style="width:100%;height:auto;opacity:0.85;" />
                     </div>
-                    """,unsafe_allow_html=True,)  
-
+                    """,unsafe_allow_html=True,)
 
     # ── 2위~10위 랭킹 카드 그리드 ────────────────────
     with right:
@@ -316,9 +312,14 @@ def render_ranking(filtered: list):
             item_tags = _safe_tags(item.get("artist_tags", []))
             item_artist = item_tags[0] if item_tags else ""
             item_summary = item.get("summary", "")
-            if (isinstance(item_summary, list) and item_summary and isinstance(item_summary[0], dict)):
+            if (
+                isinstance(item_summary, list)
+                and item_summary
+                and isinstance(item_summary[0], dict)
+            ):
                 item_summary_text = item_summary[0].get("content", "")
-            else: item_summary_text = str(item_summary or "")
+            else:
+                item_summary_text = str(item_summary or "")
 
             col = col_a if i % 2 == 0 else col_b
             with col:
@@ -342,22 +343,37 @@ def render_ranking(filtered: list):
                         <span style="font-size:11px;color:#8b7355;">기사 1건</span>
                         </div>
                     </div>
-                    """,unsafe_allow_html=True,)
+                    """,
+                        unsafe_allow_html=True,
+                    )
 
-                    if st.button("📄 상세보기",key=f"detail_{rank}_{item['id']}",use_container_width=True,):
+                    if st.button(
+                        "📄 상세보기",
+                        key=f"detail_{rank}_{item['id']}",
+                        use_container_width=True,
+                    ):
                         st.session_state["detail_id"] = item["id"]
                         st.switch_page("pages/dashboard.py")
 
+
 # ── 메인 대시보드 ─────────────────────────────────────────────────────────────
 
-def render_dashboard(processed: list,past: list,
-    keyword: str,category: str,sub_category: str,sentiments: list[str],):
+def render_dashboard(
+    processed: list,
+    past: list,
+    keyword: str,
+    category: str,
+    sub_category: str,
+    sentiments: list[str],
+):
     render_header()
 
     filtered_processed = [
-        x for x in processed if _match(x, keyword, category, sub_category, sentiments)]
+        x for x in processed if _match(x, keyword, category, sub_category, sentiments)
+    ]
     filtered_past = [
-        x for x in past if _match(x, keyword, category, sub_category, sentiments)]
+        x for x in past if _match(x, keyword, category, sub_category, sentiments)
+    ]
 
     # 대시보드의 1~10위(DB 로드) 로직을 그대로 가져옴
     from components.news_pip import load_from_db

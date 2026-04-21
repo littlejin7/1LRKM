@@ -19,27 +19,17 @@ OLLAMA_MODEL = "gemma3:latest"
 
 # ── 아티스트 이름 정규화 매핑 ──────────────────────────────────────────────────
 ARTIST_MAP = {
-    "babymonster": "베이비몬스터",
-    "baby monster": "베이비몬스터",
-    "베이비 몬스터": "베이비몬스터",
-    "baemon": "베이비몬스터",
-    "blackpink": "블랙핑크",
-    "black pink": "블랙핑크",
-    "블랙 핑크": "블랙핑크",
-    "newjeans": "뉴진스",
-    "new jeans": "뉴진스",
-    "뉴 진스": "뉴진스",
-    "bts": "방탄소년단",
-    "bangtan": "방탄소년단",
-    "방탄": "방탄소년단",
-    "aespa": "에스파",
-    "ive": "아이브",
-    "lesserafim": "르세라핌",
-    "le sserafim": "르세라핌",
-    "straykids": "스트레이 키즈",
-    "stray kids": "스트레이 키즈",
-    "seventeen": "세븐틴",
-    "twice": "트와이스",
+    "babymonster": "베이비몬스터", "baby monster": "베이비몬스터",
+    "베이비 몬스터": "베이비몬스터", "baemon": "베이비몬스터",
+    "blackpink": "블랙핑크", "black pink": "블랙핑크", "블랙 핑크": "블랙핑크", 
+    "newjeans": "뉴진스", "new jeans": "뉴진스", "뉴 진스": "뉴진스",
+    "bts": "방탄소년단", "bangtan": "방탄소년단", "방탄": "방탄소년단",
+    "aespa": "에스파", "ive": "아이브",
+    "lesserafim": "르세라핌", "le sserafim": "르세라핌",
+    "straykids": "스트레이 키즈", "stray kids": "스트레이 키즈",
+    "seventeen": "세븐틴","twice": "트와이스",
+    "kiikii": "키키", "kiki": "키키", "Rosé": "로제", 
+    "Cats Eye": "캣츠 아이", "catseye": "캣츠 아이",
 }
 
 
@@ -290,7 +280,7 @@ def generate_report(state: NewsState) -> NewsState:
     report_lines = ["안녕하세요. 오늘의 주요 뉴스 브리핑을 전해드립니다."]
     for i, news in enumerate(top_news_list):
         summary = summaries_map.get(i, "")
-        report_lines.append(f"{i+1}위 뉴스는, {summary}")
+        report_lines.append(f"{i+1}위 뉴스의 제목은 {news['title']}로, {summary}라는 내용을 담은 기사입니다.")
     report_lines.append("이상으로 오늘의 주요 뉴스 브리핑이었습니다.")
     report_text = " ".join(report_lines)
     with open("./news_report.txt", "w", encoding="utf-8") as f:
