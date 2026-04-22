@@ -51,43 +51,5 @@ def main():
     if result.returncode != 0:
         print("  [WARN] timeline.py 실행 실패 또는 파일 없음 - 스킵")
 
-    # 6. 뉴스 브리핑 mp3 생성(이왕이 추가)
-    print("\n[6] 뉴스 브리핑 TTS 생성 시작...")
-    try:
-        import sqlite3
-        from STEP2.tts import text_to_speech
-
-        conn = sqlite3.connect(str(_ROOT / "k_enter_news.db"))
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT ko_title, trend_insight 
-            FROM processed_news 
-            WHERE importance IS NOT NULL 
-            ORDER BY importance DESC 
-            LIMIT 10
-        """)
-        rows = cur.fetchall()
-        conn.close()
-
-        lines = ["안녕하세요. 오늘의 주요 K엔터 뉴스 top 10을 전해드립니다."]
-        for i, row in enumerate(rows, 1):
-            title = row["ko_title"] or ""
-            insight = row["trend_insight"] or ""
-            lines.append(f"{i}위 뉴스는, {title}. {insight}")
-        lines.append("이상으로 오늘의 주요 뉴스 top 10이었습니다.")
-
-        report_text = " ".join(lines)
-        output_path = str(_ROOT / "news_report.mp3")
-        text_to_speech(report_text, output_path)
-        print("  ✅ news_report_ko.mp3 생성 완료")
-
-    except Exception as e:
-        print(f"  [WARN] TTS 생성 실패: {e}")
-
-    print("\n" + "="*50)
-    print("[END] 전체 파이프라인 완료!")
-## -------------------------------------여기까지 추가
-
 if __name__ == "__main__":
     main()

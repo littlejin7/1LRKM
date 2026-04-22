@@ -136,7 +136,7 @@ img { border-radius: 8px; }
 
                 
 [data-testid="stMainBlockContainer"] {
-    padding-top: 80px !important;
+    padding-top: 120px !important;
 }
 
 /* ───── 커스텀 컴포넌트 ───────────────────────────── */

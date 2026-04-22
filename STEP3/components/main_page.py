@@ -46,7 +46,7 @@ def _thumb_html(url: str, featured: bool = False) -> str:
     cls = "featured-thumb" if featured else "news-thumb"
     fallback = "https://via.placeholder.com/640x360?text=No+Image"
     src = url.strip() if url else fallback
-    return f'<img class="{cls}" src="{src}" alt="thumbnail" onerror="this.src=\'{fallback}\'" />'
+    return f'<img class="{cls}" src="{src}" alt="thumbnail" referrerpolicy="no-referrer" onerror="this.src=\'{fallback}\'" />'
 
 
 def _badge(sentiment: str) -> str:
@@ -108,42 +108,30 @@ def get_base64_image(image_path):
     with open(image_path, "rb") as f:
         data = f.read()
     return base64.b64encode(data).decode()
-
+####여기서부터 #####
 def render_header():
     img_base64 = get_base64_image(TITLE_IMG)
-    st.markdown(
-        f"""<style>
-            header[data-testid="stHeader"] {{ display: none; }}
-            .custom-header {{
+    
+    st.markdown(f"""
+        <style>
+            .fixed-header {{
                 position: fixed;
                 top: 0;
                 left: 0;
                 right: 0;
                 z-index: 9999;
-                background-color: transparent;  
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                padding: 10px 0;
-                height: 120px;  /* 헤더 높이*/
-            }}
-            .custom-header img {{
-                height: 150px;  /*  이미지 크기  */
-                width: auto;
-                object-fit: contain;
-            }}
-            .main .block-container {{
-                padding-top: 200px !important;  /* 
+                height: 160px;
+                background-image: url("data:image/png;base64,{img_base64}");
+                background-size: auto 150px;
+                background-position: center;
+                background-repeat: no-repeat;
+                background-color: transparent;
+                margin-top: -10px;
             }}
         </style>
-        <div class="custom-header">
-            <img src="data:image/png;base64,{img_base64}" alt="header logo">
-        </div>
-    """,
-        unsafe_allow_html=True,
-    )
-
-
+        <div class="fixed-header"></div>
+    """, unsafe_allow_html=True)
+####여기까지 변경 #####
 # ── 보고서 PDF 생성 ───────────────────────────────────────────────────────────
 def generate_report_pdf(filtered: list) -> bytes:
     buffer = io.BytesIO()
@@ -233,6 +221,7 @@ def render_metrics(processed: list, past: list):
 
 def render_ranking(filtered: list):
     mp3_path = Path(__file__).resolve().parent.parent.parent / "news_report_ko.mp3" 
+    txt_path = Path(__file__).resolve().parent.parent.parent / "news_report.txt"
     if not filtered:
         st.markdown('<div style="color:#8b7355;text-align:center;padding:40px;">조건에 맞는 기사가 없습니다.</div>',unsafe_allow_html=True)
         return
@@ -253,14 +242,23 @@ def render_ranking(filtered: list):
     featured = filtered[0]
     tags = _safe_tags(featured.get("artist_tags", []))
     artist_name = tags[0] if tags else ""
-    summary = featured.get("summary", "")
-    if isinstance(summary, list) and summary and isinstance(summary[0], dict):
-        summary_text = summary[0].get("content", "")
-    else:
-        summary_text = str(summary or "")
+    summary_text = ""
+    summary = featured.get("summary", [])
+    if isinstance(summary, list) and summary:
+        if isinstance(summary[0], dict):
+            summary_text = summary[0].get("content", "")
+        else:
+            summary_text = "\n".join([str(s) for s in summary])
+    elif isinstance(summary, str):
+        summary_text = summary
   
     if briefing_click:
-        if mp3_path.exists():
+
+        if txt_path.exists():
+            from STEP2.tts import text_to_speech
+            with open(txt_path, "r", encoding="utf-8") as f:
+                report_text = f.read()
+            text_to_speech(report_text, str(mp3_path.parent / "news_report.mp3"))
             with open(mp3_path, "rb") as f:
                 audio_bytes = f.read()
             st.audio(audio_bytes, format="audio/mp3", autoplay=True)
@@ -275,15 +273,18 @@ def render_ranking(filtered: list):
             st.markdown(
                 f"""<div>
               {_thumb_html(featured.get("thumbnail_url", ""), featured=True)}
+            </div>""",
+                unsafe_allow_html=True,
+            )
+            st.markdown(f"""
               <div class="featured-rank">01</div>
               <div style="margin:8px 0 16px;display:flex;align-items:center;gap:8px;">
                  {_badge(featured.get("sentiment","neutral"))}
               <span style="font-size:11px;color:#8b7355;">기사 1건</span>
-            </div>
-              <div class="featured-artist">{featured.get("title","")}</div>
-              <div class="featured-headline">{artist_name}</div>
+              </div>
+              <div class="featured-artist">{artist_name}</div>
+              <div class="featured-headline">{featured.get("title","")}</div>
               <div class="featured-summary">{summary_text}</div>
-           </div>
             """,
                 unsafe_allow_html=True,
             )
@@ -376,7 +377,7 @@ def render_dashboard(
     ]
 
     # 대시보드의 1~10위(DB 로드) 로직을 그대로 가져옴
-    from components.news_pip import load_from_db
+    from components.news.news_pip import load_from_db
 
     dashboard_data = load_from_db()
 
