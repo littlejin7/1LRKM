@@ -130,6 +130,10 @@ class KpopNewsSummary(BaseModel):
                         new_list.append(item)
                 data[key] = new_list
 
+        # 1.5. timeline 보정
+        if data.get("timeline") is None:
+            data["timeline"] = []
+
         # 2. 중요도(importance) 보정 (문자열로 온 경우 숫자로 변환)
         imp = data.get("importance")
         if imp is not None:

@@ -175,8 +175,8 @@ def load_from_db():
             if len(final_news_list) >= 10:
                 break
 
-    # 최종 정렬 (10~12개 사이가 됨)
-    final_news_list = sorted(final_news_list, key=lambda x: x["importance"], reverse=True)
+    # 최종 정렬 후 상위 10개로 제한
+    final_news_list = sorted(final_news_list, key=lambda x: x["importance"], reverse=True)[:10]
 
     _, past_store = get_stores()
     related_news_map = {}

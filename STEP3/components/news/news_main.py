@@ -1,24 +1,27 @@
 import streamlit as st
 
+
 def render(news: dict):
     url = news.get("url", "")
-    link_html = f'<a href="{url}" target="_blank" style="color:#1a56db; text-decoration:none;">기사 보기 →</a>' if url else ""
+    link_html = (
+        f'<a href="{url}" target="_blank" style="color:#1a56db; text-decoration:none;">원문 기사 보기 ↗</a>'
+        if url
+        else ""
+    )
     # 제목 + 메타
     st.markdown(
-        f"<div class='news-title'>{news['title']}</div>",
-        unsafe_allow_html=True
+        f"<div class='news-title'>{news['title']}</div>", unsafe_allow_html=True
     )
     st.markdown(
         f"<div class='news-meta'>{news['source_name']} · "
-        f"{news['published_at'][:10] if news['published_at'] else ''} {link_html}</div>",
+        f"{news['published_at'][:10] if news['published_at'] else ''} · {link_html}</div>",
         unsafe_allow_html=True,
     )
 
     # 요약 공통 헤더
     def render_summary(items: list, label_text: str):
         st.markdown(
-            f"<div class='section-label'>{label_text}</div>",
-            unsafe_allow_html=True
+            f"<div class='section-label'>{label_text}</div>", unsafe_allow_html=True
         )
         html = ""
         for item in items:
@@ -41,7 +44,7 @@ def render(news: dict):
             </div>"""
         st.markdown(html, unsafe_allow_html=True)
 
-    render_summary(news.get("summary", []),    "요약 카드 (SUMMARY)")
+    render_summary(news.get("summary", []), "요약 카드 (SUMMARY)")
     render_summary(news.get("summary_en", []), "요약 카드 (ENGLISH)")
 
     # 키워드

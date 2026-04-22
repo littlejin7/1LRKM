@@ -1,5 +1,6 @@
 import streamlit as st
 
+
 def render(timeline: list, artist_tags: list):
     artist_name = artist_tags[0] if artist_tags else ""
 
@@ -12,7 +13,7 @@ def render(timeline: list, artist_tags: list):
         <div class='timeline-wrap'>"""
 
     for i, item in enumerate(timeline):
-        is_last = (i == 0)
+        is_last = i == 0
         sentiment = item.get("sentiment", "neutral")
 
         dot_class = {
@@ -33,8 +34,12 @@ def render(timeline: list, artist_tags: list):
         if is_last:
             badge_txt += " · 현재"
 
-        url = item.get('url', '')
-        url_html = f"<a href='{url}' target='_blank' style='font-size:0.75rem; color:#1a56db;'>기사 보기 →</a>" if url else ""
+        url = item.get("url", "")
+        url_html = (
+            f"<a href='{url}' target='_blank' style='font-size:0.75rem; color:#1a56db;'>기사 보기 →</a>"
+            if url
+            else ""
+        )
 
         timeline_html += f"""
         <div class='timeline-item'>

@@ -1,7 +1,9 @@
 import streamlit as st
 
+
 def score_to_pct(score: float) -> int:
     return max(0, min(100, int((1 - score) * 100)))
+
 
 def score_class(pct: int) -> str:
     if pct >= 85:
@@ -9,6 +11,7 @@ def score_class(pct: int) -> str:
     if pct >= 70:
         return "rag-score-mid"
     return "rag-score-low"
+
 
 def render(related: list):
     rag_html = """

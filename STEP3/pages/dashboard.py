@@ -5,12 +5,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from components.styles import apply_styles
-from components.widget1 import render as render_so_what
-from components.widget2 import render as render_timeline
-from components.widget3 import render as render_related, score_to_pct
-from components.news_main import render as render_body
-from components.news_nav import render as render_navigator
-from components.news_pip import run_pipeline
+from components.news.widget1 import render as render_so_what
+from components.news.widget2 import render as render_timeline
+from components.news.widget3 import render as render_related, score_to_pct
+from components.news.news_main import render as render_body
+from components.news.news_nav import render as render_navigator
+from components.news.news_pip import run_pipeline
 
 apply_styles()
 
