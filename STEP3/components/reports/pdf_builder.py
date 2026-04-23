@@ -13,11 +13,12 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.utils import ImageReader
 
-from STEP3.components.reports.charts import _build_weekly_png_sections
 from STEP3.components.reports.news_character import (
     parse_insight, draw_section_title, draw_insight_box,
     draw_distribution_chart, draw_haeryang_detail
 )
+from STEP3.components.reports.top3 import draw_page4
+from STEP3.components.reports.db import get_top_artists, get_top_source
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
 OLLAMA_MODEL = "gemma3:latest"
@@ -129,11 +130,51 @@ def generate_pdf(top10: list, summary: str, top_keywords: list, all_news, tree_d
         return (y_top, page_num)
 
     # ─────────────────────────────────────
-    # 페이지 1: Top 10 뉴스 tts_text
+    # 페이지 1: 서론 및 Top 10 뉴스 tts_text
     # ─────────────────────────────────────
     page_num = 1
     draw_header(c, page_num, None)
     y = H - 28*mm
+
+    # 서론 섹션
+    c.setFillColor(colors.HexColor('#1a1a2e'))
+    c.setFont('Malgun', 13)
+    c.drawString(15*mm, y, '■ 서론')
+    y -= 7*mm
+
+    c.setStrokeColor(colors.HexColor('#dddddd'))
+    c.setLineWidth(0.5)
+    c.line(15*mm, y, W - 15*mm, y)
+    y -= 5*mm
+
+    introduction_text = "오늘의 K-ENT 시장은 정체된 패러다임을 깨는 새로운 시도와 글로벌 성과가 교차하는 지점에 있습니다. 인공지능이 분석한 오늘의 트렌드 차트에는 [주요 아티스트]를 중심으로 한 팬덤 경제의 확장과 [핵심 키워드]라는 새로운 화두가 선명하게 드러나고 있습니다. 지금 바로 오늘의 변화를 확인할 수 있습니다."
+
+    max_width = W - 30*mm
+    c.setFillColor(colors.HexColor('#333333'))
+    c.setFont('Malgun', 9)
+
+    line = ''
+    lines = []
+    for ch in introduction_text:
+        test = line + ch
+        if c.stringWidth(test, 'Malgun', 9) > max_width:
+            lines.append(line)
+            line = ch
+        else:
+            line = test
+    if line:
+        lines.append(line)
+
+    for ln in lines:
+        if y < 20*mm:
+            c.showPage()
+            page_num += 1
+            draw_header(c, page_num, None)
+            y = H - 28*mm
+        c.drawString(15*mm, y, ln)
+        y -= 6*mm
+
+    y -= 10*mm  # 섹션 간 간격
 
     c.setFillColor(colors.HexColor('#1a1a2e'))
     c.setFont('Malgun', 13)
@@ -231,57 +272,21 @@ def generate_pdf(top10: list, summary: str, top_keywords: list, all_news, tree_d
     y -= box_height + 10*mm
 
     # ─────────────────────────────────────
-    # 페이지 2: 주간 도표
-    # ────────────────────────────────────
-    c.showPage()
-    page_num += 1
-    draw_header(c, page_num, None)
-    y = H - 28 * mm
-
-
-    c.setStrokeColor(colors.HexColor('#1a1a2e'))
-    c.setLineWidth(1.5)
-    c.line(15*mm, y, W - 15*mm, y)
-    y -= 8*mm
-
-    pngs = _build_weekly_png_sections(period_days=3)
-    _, page_num = _draw_png_sections(pngs, start_y=y, page_num=page_num)
-
-    # ─────────────────────────────────────
     # 해량 섹션: 최신 연예계 뉴스 성격
     # ─────────────────────────────────────
     c.showPage()
     page_num += 1
     draw_header(c, page_num, None)
     y = H - 28*mm
-    y = draw_section_title(c, y, '■  분석 요약')
+    y = draw_section_title(c, y, '■  최신 연예계 뉴스 분석')
     headline, body = parse_insight(insight_raw)
     y = draw_insight_box(c, y, headline, body)
     y = draw_distribution_chart(c, tree_data, h_total, y)
     y, page_num = draw_haeryang_detail(c, tree_data, h_total, y, page_num, draw_header)
 
-    # ─────────────────────────────────────
-    # 최신 핵심 키워드 TOP 3
-    # ─────────────────────────────────────
-    c.showPage()
-    page_num += 1
-    draw_header(c, page_num, None)
-    y = H - 28 * mm
-
-    c.setFillColor(colors.HexColor('#1a1a2e'))
-    c.setFont('Malgun', 13)
-    c.drawString(15*mm, y, '■  최신 핵심 키워드 TOP 3')
-    y -= 4*mm
-    c.setStrokeColor(colors.HexColor('#dddddd'))
-    c.setLineWidth(0.5)
-    c.line(15*mm, y, W - 15*mm, y)
-    y -= 8*mm
-
-    for i, (kw, cnt) in enumerate(top_keywords):
-        c.setFillColor(colors.HexColor('#1a1a2e'))
-        c.setFont('Malgun', 11)
-        c.drawString(15*mm, y, f'{i+1}위  #{kw}  ({cnt}건)')
-        y -= 8*mm
+    top_artists = get_top_artists()
+    top_source = get_top_source()
+    draw_page4(c, W, H, draw_header, top_artists, top_keywords, top_source, page_num=3, total_pages=3)
 
     c.save()
     print(f"PDF 저장 완료: {OUTPUT_PATH}")

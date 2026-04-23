@@ -206,3 +206,45 @@ def get_top_keywords(top_n: int = 3) -> list:
                 counter[kw] += 1
 
     return counter.most_common(top_n)
+
+
+def get_top_artists(top_n: int = 3) -> list[tuple[str, int]]:
+    """processed_news 전체 artist_tags에서 TOP N 아티스트 집계"""
+    conn = sqlite3.connect(str(ROOT_DIR / "k_enter_news.db"))
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT artist_tags FROM processed_news WHERE artist_tags IS NOT NULL")
+    rows = cursor.fetchall()
+    conn.close()
+
+    counter = Counter()
+    for row in rows:
+        tags = _j(row["artist_tags"])
+        for tag in tags:
+            if not isinstance(tag, str):
+                continue
+            tag = tag.strip()
+            if not tag:
+                continue
+            norm = ARTIST_MAP.get(tag.lower().replace(" ", ""), tag)
+            counter[norm] += 1
+
+    return counter.most_common(top_n)
+
+
+def get_top_source(top_n: int = 3) -> list[tuple[str, int]]:
+    """processed_news 전체 source_name에서 TOP N 언론사 집계"""
+    conn = sqlite3.connect(str(ROOT_DIR / "k_enter_news.db"))
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT source_name FROM processed_news WHERE source_name IS NOT NULL")
+    rows = cursor.fetchall()
+    conn.close()
+
+    counter = Counter()
+    for row in rows:
+        source = row["source_name"]
+        if source and isinstance(source, str):
+            counter[source.strip()] += 1
+
+    return counter.most_common(top_n)
