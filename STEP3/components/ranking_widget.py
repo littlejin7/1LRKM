@@ -17,10 +17,18 @@ def render_ranking(filtered: list):
             '<div class="section-title">🏆 오늘의 랭킹</div>', unsafe_allow_html=True
         )
     with report_col:
-        pdf_bytes = generate_report_pdf(filtered)
-        st.download_button(label=" 📄오늘의 종합 보고서", data=pdf_bytes,
+        from STEP3.pages.report import main as generate_report
+        generate_report()
+        pdf_path = Path(__file__).resolve().parent.parent.parent / "k_ent_report.pdf"
+        with open(pdf_path, "rb") as f:
+            pdf_bytes = f.read()
+        st.download_button(
+            label="오늘의 종합 보고서",
+            data=pdf_bytes,
             file_name=f"K-ENT_보고서_{datetime.now().strftime('%Y%m%d')}.pdf",
-            mime="application/pdf", use_container_width=True,)
+            mime="application/pdf",
+            use_container_width=True,
+        )
     with btn_col:
         briefing_click = st.button("🎙️ 오늘의 뉴스 브리핑 듣기", use_container_width=True)
 
