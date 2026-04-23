@@ -32,6 +32,7 @@ ARTIST_MAP = {
     "stray kids": "스트레이 키즈",
     "seventeen": "세븐틴",
     "twice": "트와이스",
+    "iu": "아이유"
 }
 
 def normalize_artist(name: str) -> str:
@@ -93,7 +94,7 @@ def load_from_db():
             SELECT p.id, p.raw_news_id, p.category, p.sub_category,
                 p.summary, p.summary_en, p.keywords, p.artist_tags,
                 p.sentiment, p.importance, p.importance_reason,
-                p.trend_insight, p.timeline, p.source_name,
+                p.trend_insight, p.timeline, p.source_name, p.tts_text,
                 p.url, p.published_at, p.ko_title, p.thumbnail_url
             FROM processed_news p
             WHERE p.importance IS NOT NULL AND p.category = ?
@@ -148,6 +149,7 @@ def load_from_db():
                 "published_at": str(row["published_at"]) if row["published_at"] else "",
                 "timeline": parse_json(row["timeline"]),
                 "thumbnail_url": row["thumbnail_url"] or "",
+                "tts_text": row["tts_text"] or ""
             }
 
             if not is_dup and cat_count < 4:
@@ -176,7 +178,7 @@ def load_from_db():
                 break
 
     # 최종 정렬 후 상위 10개로 제한
-    final_news_list = sorted(final_news_list, key=lambda x: x["importance"], reverse=True)[:10]
+    final_news_list = sorted(final_news_list, key=lambda x: (x["importance"], x["id"]), reverse=True)[:10]
 
     _, past_store = get_stores()
     related_news_map = {}

@@ -118,7 +118,7 @@ def fetch_top_news():
             if len(final_list) >= 10:
                 break
 
-    return sorted(final_list, key=lambda x: x["importance"], reverse=True)
+    return sorted(final_list, key=lambda x: (x["importance"], x["id"]), reverse=True)
 
 load_dotenv()
 
@@ -250,12 +250,9 @@ def main():
     for i, news in enumerate(top_news_list):
         print(f"\n{i+1}위. [{news['category']}][중요도:{news['importance']}] {news['title']}")
 
-        # artist_tags + keywords 합쳐서 검색 쿼리 구성
         artists = news["artist_tags"] if isinstance(news["artist_tags"], list) else []
         keywords = news["keywords"] if isinstance(news["keywords"], list) else []
-        norm_artists = [a for a in artists if a in ARTIST_MAP.values()]
-        query = " ".join(norm_artists[:3] if norm_artists else (artists[:2] + keywords[:3]))
-        #query = " ".join(artists[:3] + keywords[:2])  # 너무 길면 검색 품질 저하
+        query = " ".join(artists[:6] if artists else keywords[:3])
 
         print(f"  🔍 네이버 검색 쿼리: {query}")
         news_items = search_naver_news(query, display=30)
