@@ -53,7 +53,6 @@ def draw_header(c, page_num, total_pages=None):
     # 푸터
     c.setFillColor(colors.HexColor('#888888'))
     c.setFont('Malgun', 8)
-    c.drawString(15*mm, 10*mm, f'K-ENT 뉴스 브리핑  |  {today}')
     if total_pages:
         c.drawRightString(W - 15*mm, 10*mm, f'{page_num} / {total_pages}')
     else:

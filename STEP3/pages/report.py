@@ -1,7 +1,7 @@
 """
 report.cy.py — K-ENT 뉴스 브리핑 PDF 보고서 실행 파일
 위치: STEP3/pages/report.cy.py
-실행: python STEP3/pages/report.cy.py
+실행: python STEP3/pages/report.py
 """
 
 import sys
