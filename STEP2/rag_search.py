@@ -30,6 +30,7 @@ ARTIST_MAP = {
     "seventeen": "세븐틴","twice": "트와이스",
     "kiikii": "키키", "kiki": "키키", "Rosé": "로제", 
     "Cats Eye": "캣츠 아이", "catseye": "캣츠 아이",
+    "plave": "플레이브",
 }
 
 

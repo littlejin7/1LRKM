@@ -25,6 +25,7 @@ ARTIST_MAP = {
     "straykids": "스트레이 키즈", "stray kids": "스트레이 키즈",
     "seventeen": "세븐틴", "twice": "트와이스",
     "kiikii": "키키", "kiki": "키키", "Rosé": "로제", "Cats Eye": "캣츠 아이", "catseye": "캣츠 아이",
+    "PLAVE": "플레이브", "plave": "플레이브"
 }
 
 def normalize_artist(name: str) -> str:
